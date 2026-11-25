@@ -12,7 +12,7 @@ const resultsEl = $('#results');
 const MAXCHARS = 2_000_000;
 
 function startWorker() {
-  worker = new Worker('worker.js');
+  worker = new Worker('worker.js?v=' + (window.APP_V || Date.now()));
   worker.onmessage = onMsg;
   worker.postMessage({ type: 'init' });
 }
@@ -162,7 +162,7 @@ $('#edSave').onclick = saveDo;
 let popWin = null;
 $('#edPop').onclick = () => {
   if (popWin && !popWin.closed) { popWin.focus(); return; }
-  popWin = window.open('editor.html', 'stataDoEditor', 'width=900,height=700');
+  popWin = window.open('editor.html?v=' + (window.APP_V || ''), 'stataDoEditor', 'width=900,height=700');
   showTab('results');
 };
 $('#doOpen').onchange = async (e) => {
