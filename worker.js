@@ -138,7 +138,7 @@ buf.getvalue()`);
 import json, numpy as np
 d = ip.data
 start, cnt = ${m.start | 0}, ${m.count | 0}
-cols = ${JSON.stringify(m.vars || null)} or d.vars
+cols = ${JSON.stringify(m.vars || [])} or d.vars
 rows = []
 for i in range(start, min(d.n, start + cnt)):
     r = []
