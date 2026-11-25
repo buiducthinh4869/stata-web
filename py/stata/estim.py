@@ -897,17 +897,18 @@ def cmd_reghdfe(ip, cmd, rest, by):
         coefs = L - red
         dfa += coefs
         dfa_rows.append((v, L, red, coefs, nested))
-    df_r = n - K - dfa - 1
+    c0 = 0 if (dfa_rows and not dfa_rows[0][4]) else 1
+    df_r = n - K - dfa - c0
     rss = float(e @ e)
     s2 = rss / df_r
     if vce == 'ols':
         V_act = s2 * XtXi
         df_test = df_r
     elif vce == 'robust':
-        V_act = sandwich(X, X * e[:, None], XtXi) * (n / df_r) if False else sandwich(X, X * e[:, None], XtXi) * ((n - 1) / (n - K - dfa - 1))
+        V_act = sandwich(X, X * e[:, None], XtXi) * (n / df_r) if False else sandwich(X, X * e[:, None], XtXi) * ((n - 1) / (n - K - dfa - c0))
         df_test = df_r
     else:
-        qc = Gc / (Gc - 1) * (n - 1) / (n - K - dfa - 1)
+        qc = Gc / (Gc - 1) * (n - 1) / (n - K - dfa - c0)
         V_act = sandwich(X, X * e[:, None], XtXi, cgid) * qc
         df_test = Gc - 1
     # constant
