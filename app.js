@@ -30,7 +30,15 @@ function append(style, text) {
 let pendingScroll = false;
 setInterval(() => { if (pendingScroll) { resultsEl.scrollTop = resultsEl.scrollHeight; pendingScroll = false; } }, 80);
 
-function setStatus(t) { $('#status').textContent = t; }
+function setStatus(t) { $('#status').textContent = t; if (window.edChan) edChan.postMessage({ type: 'status', text: t }); }
+const edChan = window.edChan = new BroadcastChannel('stata-web');
+edChan.onmessage = (ev) => {
+  const m = ev.data;
+  if (m.type === 'hello') edChan.postMessage({ type: 'load', text: $('#editor').value, name: edFile });
+  else if (m.type === 'sync') { $('#editor').value = m.text; edFile = m.name; $('#edName').textContent = m.name; updateLines(); }
+  else if (m.type === 'run') { showTab('results'); run(m.code, true, m.label); }
+  else if (m.type === 'save') { $('#editor').value = m.text; edFile = m.name; saveDo(); }
+};
 
 function onMsg(ev) {
   const m = ev.data;
@@ -68,7 +76,11 @@ function onMsg(ev) {
       break;
     }
     case 'text':
-      if (m.purpose === 'editor') { $('#editor').value = m.text; edFile = m.path.split('/').pop(); $('#edName').textContent = edFile; updateLines(); showTab('editor'); }
+      if (m.purpose === 'editor') {
+        $('#editor').value = m.text; edFile = m.path.split('/').pop(); $('#edName').textContent = edFile; updateLines();
+        edChan.postMessage({ type: 'load', text: m.text, name: edFile });
+        if (!(popWin && !popWin.closed)) showTab('editor');
+      }
       break;
     case 'data': renderData(m.data); break;
     case 'mounted': mountedName = m.name; $('#cwd').textContent = '(' + m.name + ')'; append('txt', `\n(thư mục làm việc: ${m.name})\n`); break;
@@ -147,9 +159,16 @@ function saveDo() {
   setStatus(`Đã lưu ${edFile}`);
 }
 $('#edSave').onclick = saveDo;
+let popWin = null;
+$('#edPop').onclick = () => {
+  if (popWin && !popWin.closed) { popWin.focus(); return; }
+  popWin = window.open('editor.html', 'stataDoEditor', 'width=900,height=700');
+  showTab('results');
+};
 $('#doOpen').onchange = async (e) => {
   const f = e.target.files[0]; if (!f) return;
   ed.value = await f.text(); edFile = f.name; $('#edName').textContent = f.name; updateLines(); e.target.value = '';
+  edChan.postMessage({ type: 'load', text: ed.value, name: edFile });
 };
 $('#exSel').onchange = (e) => {
   const f = e.target.value; if (!f) return;

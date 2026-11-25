@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Do-file Editor — Stata Web</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { height: 100vh; }
+  .center { margin: 8px; flex: 1; }
+</style>
+</head>
+<body>
+<section class="center">
+  <div class="edtools">
+    <span id="edName">untitled.do</span>
+    <label class="btn">Mở .do<input type="file" id="doOpen" accept=".do,.txt" hidden></label>
+    <button id="edNew">Mới</button>
+    <button id="edSave">Lưu (Ctrl+S)</button>
+    <button id="edRunAll" class="primary">▶ Chạy tất cả (Ctrl+D)</button>
+    <button id="edRunSel">▶ Chạy phần chọn (Ctrl+Shift+D)</button>
+    <span id="status" class="muted"></span>
+  </div>
+  <div class="edwrap"><pre id="lineno"></pre><textarea id="editor" spellcheck="false" placeholder="* Viết do-file ở đây"></textarea></div>
+</section>
+<script>
+const ch = new BroadcastChannel('stata-web');
+const ed = document.getElementById('editor');
+let name = 'untitled.do';
+const $ = (s) => document.querySelector(s);
+function lines() { $('#lineno').textContent = Array.from({ length: ed.value.split('\n').length }, (_, i) => i + 1).join('\n'); }
+function setName(n) { name = n; $('#edName').textContent = n; document.title = n + ' — Do-file Editor'; }
+function sync() { ch.postMessage({ type: 'sync', text: ed.value, name }); }
+ed.addEventListener('input', () => { lines(); clearTimeout(window._t); window._t = setTimeout(sync, 400); });
+ed.addEventListener('scroll', () => { $('#lineno').scrollTop = ed.scrollTop; });
+function runAll() { ch.postMessage({ type: 'run', code: ed.value, label: 'do ' + name }); }
+function runSel() {
+  let s = ed.value.substring(ed.selectionStart, ed.selectionEnd);
+  if (!s.trim()) { const v = ed.value, p = ed.selectionStart; const a = v.lastIndexOf('\n', p - 1) + 1, b = v.indexOf('\n', p); s = v.substring(a, b < 0 ? v.length : b); }
+  ch.postMessage({ type: 'run', code: s, label: s.split('\n')[0].slice(0, 80) });
+}
+function save() { sync(); ch.postMessage({ type: 'save', text: ed.value, name }); }
+ed.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') { e.preventDefault(); ed.setRangeText('    ', ed.selectionStart, ed.selectionEnd, 'end'); lines(); }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); e.shiftKey ? runSel() : runAll(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); save(); }
+});
+$('#edRunAll').onclick = runAll;
+$('#edRunSel').onclick = runSel;
+$('#edSave').onclick = save;
+$('#edNew').onclick = () => { ed.value = ''; setName('untitled.do'); lines(); sync(); };
+$('#doOpen').onchange = async (e) => { const f = e.target.files[0]; if (!f) return; ed.value = await f.text(); setName(f.name); lines(); sync(); e.target.value = ''; };
+ch.onmessage = (ev) => {
+  const m = ev.data;
+  if (m.type === 'load') { ed.value = m.text; setName(m.name); lines(); }
+  else if (m.type === 'status') $('#status').textContent = m.text;
+};
+ch.postMessage({ type: 'hello' });
+lines();
+</script>
+</body>
+</html>
