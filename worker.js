@@ -65,7 +65,13 @@ json.dumps({'vars': vars_, 'N': d.n, 'files': sorted(files, key=lambda x: x['pat
   post('state', { state: JSON.parse(s) });
 }
 
+let xlsxLoaded = false;
 async function ensurePackages(code) {
+  if (!xlsxLoaded && /\b(import|export)\s+excel\b/.test(code)) {
+    post('status', { text: 'Đang tải openpyxl cho Excel…' });
+    await py.loadPackage(['openpyxl']);
+    xlsxLoaded = true;
+  }
   if (!sympyLoaded && /rddensity/.test(code)) {
     post('status', { text: 'Đang tải sympy cho rddensity…' });
     await py.loadPackage(['sympy']);

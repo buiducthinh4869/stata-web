@@ -4,9 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Stata Web — mô phỏng Stata cho suy diễn nhân quả</title>
-<link rel="stylesheet" href="style.css?v=20261125205245">
+<link rel="stylesheet" href="style.css?v=20261126003545">
 </head>
 <body>
+<nav class="menubar" id="menubar"></nav>
 <header class="topbar">
   <div class="brand"><span class="logo">S</span> Stata&nbsp;Web <span class="sub">mô phỏng Stata trong trình duyệt</span></div>
   <div class="tools">
@@ -41,17 +42,18 @@
     </div>
     <div class="tab" id="tab-editor">
       <div class="edtools">
-        <span id="edName">untitled.do</span>
         <label class="btn">Mở .do<input type="file" id="doOpen" accept=".do,.txt" hidden></label>
-        <button id="edSave">Lưu</button>
+        <button id="edSave">Lưu (Ctrl+S)</button>
         <button id="edRunAll" class="primary">▶ Chạy tất cả (Ctrl+D)</button>
         <button id="edRunSel">▶ Chạy phần chọn (Ctrl+Shift+D)</button>
-        <button id="edPop" title="Mở Do-file Editor thành cửa sổ riêng (có thể kéo sang màn hình khác)">⧉ Cửa sổ riêng</button>
+        <button id="edPop" title="Mở Do-file Editor thành cửa sổ riêng">⧉ Cửa sổ riêng</button>
       </div>
-      <div class="edwrap"><pre id="lineno"></pre><textarea id="editor" spellcheck="false" placeholder="* Viết do-file ở đây, hoặc chọn một do-file mẫu ở thanh trên"></textarea></div>
+      <div class="dtabs" id="dtabs"></div>
+      <div class="edwrap"><pre id="lineno"></pre><div class="edstack"><pre id="hl" aria-hidden="true"></pre><textarea id="editor" spellcheck="false" placeholder="* Viết do-file ở đây, hoặc chọn một do-file mẫu ở thanh trên"></textarea></div></div>
     </div>
     <div class="tab" id="tab-data">
-      <div class="edtools"><button id="dPrev">◀</button><span id="dInfo"></span><button id="dNext">▶</button><button id="dRefresh">Làm mới</button></div>
+      <div class="edtools"><button id="dPrev">◀</button><span id="dInfo"></span><button id="dNext">▶</button><button id="dRefresh">Làm mới</button>
+        <label class="chk"><input type="checkbox" id="dEdit"> Chế độ sửa (Data Editor)</label><span class="muted">Sửa ô → tự sinh lệnh <code>replace … in #</code> như Stata</span></div>
       <div class="tablewrap"><table id="dtable"></table></div>
     </div>
     <div class="tab" id="tab-graph">
@@ -76,6 +78,8 @@
     </section>
   </aside>
 </main>
+<dialog id="cmdDlg"><h3 id="cdTitle"></h3><div id="cdBody"></div><div class="cdPreview"><code id="cdPrev"></code></div>
+  <div class="cdBtns"><button id="cdOk" class="primary">OK (chạy)</button><button id="cdCancel">Hủy</button></div></dialog>
 <dialog id="helpDlg">
   <h2>Hướng dẫn nhanh</h2>
   <ul>
@@ -89,7 +93,8 @@
   <button onclick="this.closest('dialog').close()">Đóng</button>
 </dialog>
 <div id="drop" class="drop">Thả file vào đây để tải lên thư mục làm việc</div>
-<script>window.APP_V="20261125205245";</script>
-<script src="app.js?v=20261125205245"></script>
+<script>window.APP_V="20261126003545";</script>
+<script src="edit.js?v=20261126003545"></script>
+<script src="app.js?v=20261126003545"></script>
 </body>
 </html>

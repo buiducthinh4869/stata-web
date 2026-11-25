@@ -24,6 +24,9 @@ def mpl():
         import matplotlib.pyplot as plt
         plt.rcParams['font.family'] = 'DejaVu Sans'
         plt.rcParams['axes.unicode_minus'] = False
+        plt.rcParams.update({'axes.edgecolor': '#8a8f95', 'axes.linewidth': 0.8, 'xtick.color': '#3c4146',
+                             'ytick.color': '#3c4146', 'axes.labelcolor': '#22272b', 'axes.titleweight': 'bold',
+                             'figure.dpi': 110, 'legend.frameon': False, 'lines.solid_capstyle': 'round'})
         _mpl = plt
     return _mpl
 
@@ -43,8 +46,9 @@ _COLORS = {
     'stone': (220, 210, 180), 'midblue': (0, 102, 204), 'midgreen': (0, 153, 0), 'mint_green': (150, 220, 160),
     'none': None, 'stc1': (26, 133, 255), 'stc2': (212, 17, 89), 'stc3': (0, 191, 127),
 }
-PALETTE = ['navy', 'maroon', 'forest_green', 'dkorange', 'teal', 'cranberry', 'lavender', 'khaki', 'sienna',
-           'emidblue', 'emerald', 'brown', 'erose', 'gold', 'bluishgray']
+# Stata 18 'stcolor' scheme (cleaner than s2color)
+PALETTE = ['#1a85ff', '#d41159', '#00a76f', '#ff9f1c', '#6a4c93', '#00a6c7', '#8c564b', '#e377c2',
+           '#7f7f7f', '#bcbd22', '#17becf', '#1f3a93']
 
 
 def stata_color(spec, default=None):
@@ -109,10 +113,12 @@ def _size(s, table, default):
 
 # ---------------------------------------------------------------- figure wrapper
 class Figure:
-    def __init__(self, ip, nrows=1, ncols=1, figsize=None):
+    def __init__(self, ip, nrows=1, ncols=1, figsize=None, share=False):
         plt = mpl()
         self.ip = ip
-        self.fig, axes = plt.subplots(nrows, ncols, figsize=figsize or (7.5 if ncols == 1 else 10, 5.4))
+        self.fig, axes = plt.subplots(nrows, ncols, figsize=figsize or (7.5 if ncols == 1 else 10, 5.4),
+                                      sharex=share, sharey=share)
+        self.bottom_extra = 0.0
         self.axes = list(np.atleast_1d(axes).ravel())
         self.ax = self.axes[0]
         self.legend_items = []
@@ -123,8 +129,7 @@ class Figure:
         self.region = None
         for ax in self.axes:
             _style_axes(ax)
-        bg = stata_color('ltbluishgray') if ip.scheme.startswith('s2') else stata_color('white')
-        self.fig.patch.set_facecolor(bg)
+        self.fig.patch.set_facecolor('white')
         self.legend_opts = None
 
     def set_default_titles(self, title=None, xtitle=None, ytitle=None):
@@ -140,9 +145,9 @@ def _style_axes(ax):
     ax.set_facecolor('white')
     for s in ('top', 'right'):
         ax.spines[s].set_visible(False)
-    ax.grid(axis='y', color='#dfe6ea', lw=0.8)
+    ax.grid(axis='y', color='#e6e9ec', lw=0.8)
     ax.set_axisbelow(True)
-    ax.tick_params(labelsize=8.5)
+    ax.tick_params(labelsize=8.5, length=3)
 
 
 def kdensity(x, w=None, n=200, bw=None, kernel='epan'):
@@ -381,25 +386,27 @@ def finish_graph(ip, fig, opts, name=None):
     cap, co = txt('caption')
     # legend
     _do_legend(fig)
-    top = 0.94
+    top = 0.975
+    H = fig.fig.get_figheight()
+    lh = 0.26 / H
     if title:
-        fig.fig.suptitle(title, fontsize=_size(to.get('size'), _FONT, 13), y=0.985,
-                         color=stata_color(to.get('color'), (0, 0, 0, 1)))
-        top -= 0.055 * (title.count('\n') + 1)
+        fig.fig.suptitle(title, fontsize=_size(to.get('size'), _FONT, 13), y=0.985, fontweight='bold',
+                         color=stata_color(to.get('color'), (0.1, 0.12, 0.14, 1)))
+        top -= lh * (title.count('\n') + 1) + 0.01
     if sub:
-        fig.fig.text(0.5, top + 0.005, sub, ha='center', va='top', fontsize=_size(so.get('size'), _FONT, 10),
-                     color=stata_color(so.get('color'), (0.2, 0.2, 0.2, 1)))
-        top -= 0.045 * (sub.count('\n') + 1)
-    bottom = 0.03
+        fig.fig.text(0.5, top, sub, ha='center', va='top', fontsize=_size(so.get('size'), _FONT, 10),
+                     color=stata_color(so.get('color'), (0.3, 0.32, 0.35, 1)))
+        top -= lh * 0.85 * (sub.count('\n') + 1)
+    bottom = 0.01 + getattr(fig, 'bottom_extra', 0.0)
     if note:
-        fig.fig.text(0.02, 0.01, note, ha='left', va='bottom', fontsize=_size(no_.get('size'), _FONT, 7.5),
-                     color=stata_color(no_.get('color'), (0.2, 0.2, 0.2, 1)))
-        bottom += 0.035 * (note.count('\n') + 1)
+        fig.fig.text(0.015, 0.012, note, ha='left', va='bottom', fontsize=_size(no_.get('size'), _FONT, 7.5),
+                     color=stata_color(no_.get('color'), (0.35, 0.37, 0.4, 1)))
+        bottom += (0.2 / H) * (note.count('\n') + 1) + 0.01
     if cap:
         fig.fig.text(0.02, bottom, cap, ha='left', va='bottom', fontsize=7.5)
         bottom += 0.035
     try:
-        fig.fig.tight_layout(rect=(0, bottom, 1, top if (title or sub) else 0.99))
+        fig.fig.tight_layout(rect=(0, bottom, 1, top if (title or sub) else 0.995))
     except Exception:  # noqa: BLE001
         pass
     nm = name or getattr(fig, 'name', None) or 'Graph'
@@ -582,6 +589,9 @@ def cmd_twoway(ip, cmd, rest, by):
         # single plot: options after comma are both plot and global options
         k = find_top(plots[0], ',')
         gopts = Options(plots[0][k + 1:])
+    byraw = gopts.get('by')
+    if byraw:
+        return _twoway_by(ip, plots, gopts, byraw)
     k_series = 0
     for ptxt in plots:
         k_series = _draw_plot(ip, fig, ptxt, k_series)
@@ -595,6 +605,72 @@ def cmd_twoway(ip, cmd, rest, by):
         pass
     fig.set_default_titles(xtitle=getattr(fig, 'xtitle_default', None), ytitle=getattr(fig, 'ytitle_default', None))
     apply_global_options(fig, gopts)
+    finish_graph(ip, fig, gopts)
+
+
+def _by_levels(d, byraw):
+    k = find_top(byraw, ',')
+    var = d.resolve((byraw if k < 0 else byraw[:k]).split()[0])
+    bo = Options(byraw[k + 1:] if k >= 0 else '')
+    x = d.cols[var]
+    if d.isstr(var):
+        lv = sorted(set(x) - {''})
+    else:
+        lv = sorted(np.unique(x[~np.isnan(x)]))
+    return var, lv, bo
+
+
+def _twoway_by(ip, plots, gopts, byraw):
+    d = ip.data
+    var, lv, bo = _by_levels(d, byraw)
+    n = len(lv)
+    cols = int(bo.get('cols') or 0) or (min(n, 3) if n > 2 else n)
+    rows = int(bo.get('rows') or 0) or math.ceil(n / cols)
+    cols = math.ceil(n / rows)
+    fig = Figure(ip, rows, cols, figsize=(min(4.2 * cols, 13), 3.4 * rows + 0.9), share=not bo.has('noixaxes'))
+    for k, ax in enumerate(fig.axes):
+        if k >= n:
+            ax.set_visible(False)
+            continue
+        sub = Figure.__new__(Figure)
+        sub.__dict__.update(fig.__dict__)
+        sub.ax = ax
+        sub.legend_items = []
+        sub.extra_mask = (d.cols[var] == lv[k])
+        ks = 0
+        for ptxt in plots:
+            ks = _draw_plot(ip, sub, ptxt, ks)
+        lab = lv[k] if d.isstr(var) else (d.value_text(var, lv[k]) or g_fmt(lv[k]))
+        ax.set_title(str(lab), fontsize=9.5, fontweight='bold', color='#22272b')
+        if k == 0:
+            fig.legend_items = sub.legend_items
+            fig.xtitle_default = getattr(sub, 'xtitle_default', None)
+            fig.ytitle_default = getattr(sub, 'ytitle_default', None)
+    if not bo.has('noixtitle'):
+        pass
+    xt = fig.__dict__.get('xtitle_default')
+    yt = fig.__dict__.get('ytitle_default')
+    t = bo.get('title')
+    if t:
+        gopts.items.append(('title', t))
+    apply_global_options(fig, gopts)
+    for key, val in (('xtitle', xt), ('ytitle', yt)):
+        v = fig.titles.pop(key, None)
+        txt = v[0] if isinstance(v, tuple) else (v if v is not None else val)
+        if txt:
+            if key == 'xtitle':
+                fig.fig.supxlabel(txt, fontsize=9.5, y=0.075 if len(fig.legend_items) > 1 else 0.02)
+            else:
+                fig.fig.supylabel(txt, fontsize=9.5)
+    if len(fig.legend_items) > 1 and not (fig.legend_opts or '').startswith('off'):
+        fig.fig.legend([h for h, _ in fig.legend_items], [l for _, l in fig.legend_items], loc='lower center',
+                       bbox_to_anchor=(0.5, 0.0), ncol=min(4, len(fig.legend_items)), fontsize=8.5, frameon=False)
+        fig.bottom_extra = 0.08
+        fig.legend_items = []
+    fig.legend_opts = 'off'
+    note = fig.titles.get('note')
+    if not note:
+        fig.titles['note'] = (f'Graphs by {d.varlab.get(var, var)}', Options(''))
     finish_graph(ip, fig, gopts)
 
 
@@ -641,6 +717,8 @@ def _draw_plot(ip, fig, ptxt, idx):
         return _draw_function(ip, fig, p, idx)
     vars_ = d.expand_varlist(split_top(p.body))
     mask = ip.mark(p)
+    if getattr(fig, 'extra_mask', None) is not None:
+        mask = mask & fig.extra_mask
     label_from_plot = None
     for raw in o.all('legend'):
         mm = re.search(r'label\(\s*\d+\s+"([^"]*)"', raw)
@@ -870,6 +948,17 @@ def _hist_edges(x, o):
 def cmd_histogram(ip, cmd, rest, by):
     p = parse_command(rest)
     d = ip.data
+    if p.opts.get('by'):
+        v0 = d.resolve(split_top(p.body)[0])
+        o2 = Options(p.opts.raw)
+        o2.items = [(k, a) for k, a in o2.items if k != 'by']
+        kind = 'frequency' if o2.has('frequency', 4) else ('percent' if o2.has('percent') else 'density')
+        hopts = ' '.join(f'{k}({a})' if a is not None else k for k, a in o2.items
+                         if k in ('width', 'bin', 'start', 'discrete', 'frequency', 'freq', 'percent', 'color', 'fcolor', 'lcolor'))
+        glob = ' '.join(f'{k}({a})' if a is not None else k for k, a in o2.items
+                        if k not in ('width', 'bin', 'start', 'discrete', 'frequency', 'freq', 'percent', 'color', 'fcolor', 'lcolor', 'normal', 'kdensity'))
+        ifs = f' if {p.if_exp}' if p.if_exp else ''
+        return cmd_twoway(ip, 'twoway', f'(histogram {v0}{ifs}, {hopts}), by({p.opts.get("by")}) {glob}', None)
     v = d.resolve(split_top(p.body)[0])
     mask = ip.mark(p)
     x = d.cols[v][mask].astype(float)
@@ -889,9 +978,9 @@ def cmd_histogram(ip, cmd, rest, by):
         yv, ylab = cnt / (len(x) * np.diff(edges)), 'Density'
     c = stata_color(o.get('color') or o.get('fcolor'), stata_color('khaki') if True else None)
     if not (o.get('color') or o.get('fcolor')):
-        c = (0.86, 0.80, 0.55, 1) if ip.scheme.startswith('s2') else stata_color('gs10')
+        c = stata_color(PALETTE[0])[:3] + (0.75,)
     ax.bar(edges[:-1], yv, width=np.diff(edges), align='edge', color=c,
-           edgecolor=stata_color(o.get('lcolor'), (0.45, 0.42, 0.3, 1)), lw=0.6)
+           edgecolor=stata_color(o.get('lcolor'), (1, 1, 1, 1)), lw=0.7)
     scale = 1.0
     if ylab == 'Frequency':
         scale = len(x) * np.mean(np.diff(edges))
@@ -901,10 +990,10 @@ def cmd_histogram(ip, cmd, rest, by):
         scale = 100 * np.mean(np.diff(edges))
     if o.has('normal', 3):
         g = np.linspace(edges[0], edges[-1], 200)
-        h, = ax.plot(g, sps.norm.pdf(g, x.mean(), x.std(ddof=1)) * scale, color=stata_color('maroon'), lw=1.6)
+        h, = ax.plot(g, sps.norm.pdf(g, x.mean(), x.std(ddof=1)) * scale, color=stata_color(PALETTE[1]), lw=1.8)
     if o.has('kdensity', 4):
         gx, gy = kdensity(x)
-        ax.plot(gx, gy * scale, color=stata_color('navy'), lw=1.6)
+        ax.plot(gx, gy * scale, color='#22272b', lw=1.6, ls='--')
     fig.set_default_titles(xtitle=d.varlab.get(v, v), ytitle=ylab)
     apply_global_options(fig, o)
     finish_graph(ip, fig, o)
@@ -961,7 +1050,7 @@ def cmd_graph(ip, cmd, rest, by):
     if sub in ('bar', 'hbar', 'dot'):
         return _graph_bar(ip, body, sub)
     if sub == 'matrix':
-        raise StataError('graph matrix not supported in web emulator', 198)
+        return _graph_matrix(ip, body)
     raise StataError(f'graph {sub} not supported', 198)
 
 
@@ -1401,3 +1490,35 @@ def _coef_label(name, ip):
             v = re.sub(r'^c\.', '', p_)
             out.append(d.varlab.get(v, v) if (len(parts) == 1 and v in d.cols and False) else v)
     return ' # '.join(out)
+
+
+def _graph_matrix(ip, body):
+    p = parse_command(body)
+    d = ip.data
+    vars_ = d.expand_varlist(split_top(p.body))
+    m = ip.mark(p)
+    for v in vars_:
+        m &= ~np.isnan(d.cols[v])
+    k = len(vars_)
+    half = p.opts.has('half')
+    fig = Figure(ip, k, k, figsize=(min(2.3 * k, 12), min(2.3 * k, 12)))
+    col = stata_color(p.opts.get('mcolor') or p.opts.get('color'), stata_color(PALETTE[0]))
+    for i in range(k):
+        for j in range(k):
+            ax = fig.axes[i * k + j]
+            if half and j > i:
+                ax.set_visible(False)
+                continue
+            if i == j:
+                ax.axis('off')
+                ax.text(0.5, 0.5, d.varlab.get(vars_[i], vars_[i]) if len(d.varlab.get(vars_[i], '')) < 28 else vars_[i],
+                        ha='center', va='center', fontsize=9, fontweight='bold', wrap=True, transform=ax.transAxes)
+                continue
+            ax.scatter(d.cols[vars_[j]][m], d.cols[vars_[i]][m], s=6, color=col[:3] + (0.55,), lw=0)
+            ax.tick_params(labelsize=6.5)
+            if j != 0 and not (half and j == 0):
+                ax.set_yticklabels([])
+            if i != k - 1:
+                ax.set_xticklabels([])
+    apply_global_options(fig, p.opts)
+    finish_graph(ip, fig, p.opts)

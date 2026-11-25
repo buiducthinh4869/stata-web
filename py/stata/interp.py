@@ -707,6 +707,21 @@ class Interp:
                     self.echo_block(lines, i, j)
                 i = self.exec_compound(lines, i, j, top)
                 continue
+            if re.match(r'^(input|inpu|inp)\s', t) and not re.search(r'\bend\s*$', t):
+                j = i + 1
+                while j < i1 and lines[j].text.strip() != 'end':
+                    j += 1
+                if top:
+                    self.echo_line(ln)
+                    if self.echo and not self.quiet:
+                        for x in range(i + 1, min(j + 1, i1)):
+                            self.out.write(f'{x - i:>3}. {lines[x].text.strip()}\n', 'cmd')
+                from .cmds_data import do_input
+                do_input(self, self.expand(t.split(None, 1)[1]), [lines[x].text for x in range(i + 1, min(j, i1))])
+                if top and self.echo and not self.quiet:
+                    self.out.write('\n', 'txt')
+                i = j + 1
+                continue
             if top:
                 self.echo_line(ln)
             self.exec_line(ln.text)
@@ -1076,4 +1091,4 @@ def canon_coef(name):
 
 
 def load_commands():
-    from . import cmds_core, cmds_data, cmds_stats, estim, causal, causal2, tables, graphs  # noqa: F401
+    from . import cmds_core, cmds_data, cmds_stats, estim, causal, causal2, tables, graphs, cmds_more  # noqa: F401

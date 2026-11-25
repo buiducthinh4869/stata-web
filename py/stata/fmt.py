@@ -168,7 +168,7 @@ def abbrev(name, w=12):
     """Stata abbreviation of a name to width w using ~."""
     if len(name) <= w:
         return name
-    return name[: w - 3] + '~' + name[-2:]
+    return name[: w - 2] + '~' + name[-1:]
 
 
 def comma_int(n):

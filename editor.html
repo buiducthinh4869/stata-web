@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Do-file Editor — Stata Web</title>
-<link rel="stylesheet" href="style.css?v=20261125205245">
+<link rel="stylesheet" href="style.css?v=20261126003545">
 <style>
   body { height: 100vh; }
   .center { margin: 8px; flex: 1; }
@@ -20,42 +20,40 @@
     <button id="edRunSel">▶ Chạy phần chọn (Ctrl+Shift+D)</button>
     <span id="status" class="muted"></span>
   </div>
-  <div class="edwrap"><pre id="lineno"></pre><textarea id="editor" spellcheck="false" placeholder="* Viết do-file ở đây"></textarea></div>
+  <div class="dtabs" id="dtabs"></div>
+  <div class="edwrap"><pre id="lineno"></pre><div class="edstack"><pre id="hl"></pre><textarea id="editor" spellcheck="false" placeholder="* Viết do-file ở đây"></textarea></div></div>
 </section>
+<script src="edit.js?v=20261126003545"></script>
 <script>
 const ch = new BroadcastChannel('stata-web');
-const ed = document.getElementById('editor');
-let name = 'untitled.do';
 const $ = (s) => document.querySelector(s);
-function lines() { $('#lineno').textContent = Array.from({ length: ed.value.split('\n').length }, (_, i) => i + 1).join('\n'); }
-function setName(n) { name = n; $('#edName').textContent = n; document.title = n + ' — Do-file Editor'; }
-function sync() { ch.postMessage({ type: 'sync', text: ed.value, name }); }
-ed.addEventListener('input', () => { lines(); clearTimeout(window._t); window._t = setTimeout(sync, 400); });
-ed.addEventListener('scroll', () => { $('#lineno').scrollTop = ed.scrollTop; });
-function runAll() { ch.postMessage({ type: 'run', code: ed.value, label: 'do ' + name }); }
+const ed = $('#editor');
+const sync = () => ch.postMessage({ type: 'sync', text: D.text(), name: D.name() });
+const D = window.DoEditor({ textarea: ed, overlay: $('#hl'), lineno: $('#lineno'), tabbar: $('#dtabs'), nameEl: $('#edName'),
+  onChange: () => { clearTimeout(window._t); window._t = setTimeout(sync, 400); } });
+$('#dtabs').addEventListener('click', () => setTimeout(() => { document.title = D.name() + ' — Do-file Editor'; sync(); }, 0));
+function runAll() { ch.postMessage({ type: 'run', code: D.text(), label: 'do ' + D.name() }); }
 function runSel() {
   let s = ed.value.substring(ed.selectionStart, ed.selectionEnd);
   if (!s.trim()) { const v = ed.value, p = ed.selectionStart; const a = v.lastIndexOf('\n', p - 1) + 1, b = v.indexOf('\n', p); s = v.substring(a, b < 0 ? v.length : b); }
   ch.postMessage({ type: 'run', code: s, label: s.split('\n')[0].slice(0, 80) });
 }
-function save() { sync(); ch.postMessage({ type: 'save', text: ed.value, name }); }
+function save() { ch.postMessage({ type: 'save', text: D.text(), name: D.name() }); }
 ed.addEventListener('keydown', (e) => {
-  if (e.key === 'Tab') { e.preventDefault(); ed.setRangeText('    ', ed.selectionStart, ed.selectionEnd, 'end'); lines(); }
   if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); e.shiftKey ? runSel() : runAll(); }
   if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); save(); }
 });
 $('#edRunAll').onclick = runAll;
 $('#edRunSel').onclick = runSel;
 $('#edSave').onclick = save;
-$('#edNew').onclick = () => { ed.value = ''; setName('untitled.do'); lines(); sync(); };
-$('#doOpen').onchange = async (e) => { const f = e.target.files[0]; if (!f) return; ed.value = await f.text(); setName(f.name); lines(); sync(); e.target.value = ''; };
+$('#edNew').onclick = () => { D.open('untitled' + (D.docs.length + 1) + '.do', ''); sync(); };
+$('#doOpen').onchange = async (e) => { const f = e.target.files[0]; if (!f) return; D.open(f.name, await f.text()); sync(); e.target.value = ''; };
 ch.onmessage = (ev) => {
   const m = ev.data;
-  if (m.type === 'load') { ed.value = m.text; setName(m.name); lines(); }
+  if (m.type === 'load') { if (m.name !== D.name() || m.text !== D.text()) D.open(m.name, m.text); document.title = m.name + ' — Do-file Editor'; }
   else if (m.type === 'status') $('#status').textContent = m.text;
 };
 ch.postMessage({ type: 'hello' });
-lines();
 </script>
 </body>
 </html>

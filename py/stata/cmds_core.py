@@ -248,7 +248,10 @@ def cmd_global(ip, cmd, rest, by):
 def cmd_tempfile(ip, cmd, rest, by):
     os.makedirs('/tmp/st_tmp', exist_ok=True)
     for nm in rest.split():
-        ip.locals[nm] = f'/tmp/st_tmp/{ip.tempname("ST_")}.dta'
+        fn = f'/tmp/st_tmp/{ip.tempname("ST_")}.dta'
+        if os.path.exists(fn):
+            os.remove(fn)
+        ip.locals[nm] = fn
 
 
 @command('tempvar', 'tempname')
@@ -446,7 +449,7 @@ def cmd_set(ip, cmd, rest, by):
     # everything else (more, maxvar, matsize, varabbrev, type...) silently accepted
 
 
-@command('version', 'clear', 'pause', 'sleep', 'discard', 'timer', 'mata', 'program', 'end', 'help',
+@command('version', 'clear', 'pause', 'sleep', 'discard', 'timer', 'mata', 'program', 'end',
          'search', 'update', 'query', 'cls', 'window', 'adopath', 'sysdir', 'creturn', 'translate',
          'graph_set_dummy', 'exit_dummy', 'compress', 'notes_dummy')
 def cmd_noop(ip, cmd, rest, by):
@@ -897,3 +900,54 @@ def cmd_type(ip, cmd, rest, by):
     p = ip.path(fn, must_exist=True)
     with open(p, encoding='utf-8', errors='replace') as f:
         ip.txt(f.read() + '\n')
+
+
+HELP = {
+    'Dữ liệu': 'use, save, import excel/delimited, export excel/delimited, webuse, merge, append, collapse, reshape*, describe, codebook, list, browse, count, misstable, xtset, tsset',
+    'Biến': 'generate, replace, egen, drop, keep, rename, order, sort, gsort, label, recode, encode, destring, tostring, format, duplicates, expand',
+    'Mô tả': 'summarize [, detail], tabulate [, row col chi2], tabstat, ttest, mean, correlate, pwcorr, xtsum, xtdescribe',
+    'Đồ thị': 'histogram, kdensity, scatter, twoway (scatter/line/connected/lfit/qfit/lfitci/rcap/rarea/bar/function), graph box/bar/matrix/combine/export, coefplot, marginsplot, rvfplot, pnorm, qnorm',
+    'Hồi quy': 'regress, predict, xtreg fe/re/be, reghdfe, areg, logit, probit, test, testparm, lincom, margins, hausman, estat hettest/ovtest/vif/ic',
+    'IV': 'ivregress 2sls, ivreg2, estat firststage/endogenous/overid, weakivtest',
+    'RDD': 'rdrobust, rdbwselect, rdplot, rddensity',
+    'PSM': 'psmatch2, pstest, psgraph, teffects psmatch, kmatch',
+    'DID': 'didregress, xtdidregress, estat ptrend/trendplots/granger, csdid (+ estat event), sdid',
+    'SCM': 'synth, synth2',
+    'RCT': 'ritest, ttest, regress',
+    'Bảng kết quả': 'eststo, esttab, estout, estpost, estimates store/restore/table, outreg2',
+    'Lập trình': 'local, global, scalar, matrix, display, foreach, forvalues, while, if/else, quietly, capture, by/bysort, preserve/restore, tempfile, postfile, file, do, log',
+}
+
+
+@command('help')
+def cmd_help(ip, cmd, rest, by):
+    out = ip
+    r = rest.strip().split()
+    if r:
+        name = r[0]
+        full = ALIASES_get(name)
+        if full in COMMANDS_get():
+            out.txt(f"{full}: lệnh có trong Stata Web. Cú pháp theo Stata gốc; xem tài liệu Stata: https://www.stata.com/manuals/\n")
+        else:
+            out.err(f"help for {name} not found\n")
+        return
+    out.txt('Stata Web — các lệnh được hỗ trợ (theo nhóm)\n' + '-' * 78 + '\n')
+    for k, v in HELP.items():
+        out.res(f'{k:>14}') ; out.txt(' │ ')
+        line, first = '', True
+        for w in v.split(', '):
+            if len(line) + len(w) > 58:
+                out.txt(('' if first else ' ' * 17) + line.rstrip(', ') + '\n'); line, first = '', False
+            line += w + ', '
+        out.txt(('' if first else ' ' * 17) + line.rstrip(', ') + '\n')
+    out.txt('-' * 78 + '\n(* = hỗ trợ một phần.) Gõ  help <lệnh>  để kiểm tra một lệnh.\n')
+
+
+def ALIASES_get(n):
+    from .interp import ALIASES
+    return ALIASES.get(n, n)
+
+
+def COMMANDS_get():
+    from .interp import COMMANDS
+    return COMMANDS

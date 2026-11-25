@@ -8,7 +8,7 @@ import numpy as np
 from . import expr as E
 from .data import Data, read_dta, write_dta, store_cast, promote_type, is_str_type, default_format, check_name
 from .errors import StataError
-from .fmt import fmt_num, comma_int, abbrev, g_fmt
+from .fmt import fmt_num, comma_int, abbrev, g_fmt, num_to_macro
 from .interp import command, alias
 from .syntax import parse_command, split_top, unquote, Options, quoted_strings, parse_numlist
 
@@ -719,68 +719,205 @@ def cmd_save(ip, cmd, rest, by):
     ip.txt(f'file {fn if fn.endswith(".dta") else fn + ".dta"} saved\n')
 
 
-@command('export')
-def cmd_export(ip, cmd, rest, by):
-    p = parse_command(rest)
-    body = p.body.split()
-    if not body or not body[0].startswith('delim'):
-        raise StataError('only export delimited is supported', 198)
-    d = ip.data
-    vars_ = d.expand_varlist(body[1:]) if len(body) > 1 else d.vars
-    path = ip.path(p.using)
-    import csv
-    with open(path, 'w', newline='', encoding='utf-8') as f:
-        w = csv.writer(f)
-        w.writerow(vars_)
-        for i in range(d.n):
-            row = []
-            for v in vars_:
-                x = d.cols[v][i]
-                if d.isstr(v):
-                    row.append(x)
-                else:
-                    if np.isnan(x):
-                        row.append('')
-                    else:
-                        txt = d.value_text(v, x) if not p.opts.has('nolabel') else None
-                        row.append(txt if txt is not None else (repr(float(x)) if x != int(x) else str(int(x))))
-            w.writerow(row)
-    ip.txt(f'file {p.using} saved\n')
+def _colname_to_idx(c):
+    n = 0
+    for ch in c.upper():
+        n = n * 26 + ord(ch) - 64
+    return n - 1
 
 
-@command('import')
-def cmd_import(ip, cmd, rest, by):
-    p = parse_command(rest)
-    body = p.body.split(None, 1)
-    kind = body[0]
-    fn = p.using if p.using is not None else unquote(body[1] if len(body) > 1 else '')
-    if not kind.startswith('delim') and kind not in ('excel',):
-        raise StataError(f'import {kind} not supported', 198)
+def _stata_name(raw, used, k, case):
+    import unicodedata
+    nm = str(raw).strip()
+    nm = unicodedata.normalize('NFKD', nm.replace('đ', 'd').replace('Đ', 'D')).encode('ascii', 'ignore').decode()
+    nm = re.sub(r'[^A-Za-z0-9_]', '_', nm)
+    nm = re.sub(r'_+', '_', nm).strip('_')
+    if case == 'lower':
+        nm = nm.lower()
+    elif case == 'upper':
+        nm = nm.upper()
+    if not nm or nm[0].isdigit():
+        nm = ('_' + nm) if nm else f'v{k + 1}'
+    nm = nm[:32]
+    base, j = nm, 1
+    while nm in used:
+        nm = f'{base[:30]}{j}'
+        j += 1
+    used.add(nm)
+    return nm
+
+
+def _frame_to_data(ip, df, names_from, case, allstring=False):
     import pandas as pd
-    path = ip.path(fn, must_exist=True)
-    if kind == 'excel':
-        df = pd.read_excel(path, header=0 if p.opts.has('firstrow') else None)
-    else:
-        delim = unquote(p.opts.get('delimiters', 5) or ',')
-        df = pd.read_csv(path, sep=delim)
     d = Data()
     d.n = len(df)
-    for c in df.columns:
-        nm = re.sub(r'\W', '_', str(c).strip()).lower() if not p.opts.has('case') else str(c)
+    used = set()
+    for k, c in enumerate(df.columns):
+        raw = names_from[k] if names_from is not None else None
+        good = raw is not None and str(raw).strip() not in ('', 'nan', 'None')
+        nm = _stata_name(raw, used, k, case) if good else _stata_name(f'v{k + 1}', used, k, 'preserve')
         col = df[c]
-        if not pd.api.types.is_numeric_dtype(col):
-            vals = np.array(['' if pd.isna(x) else str(x) for x in col], dtype=object)
-            d.add_var(nm, vals, 'str%d' % max(1, max((len(s) for s in vals), default=1)))
+        num = pd.to_numeric(col, errors='coerce')
+        nonnull = col.notna() & (col.astype(str).str.strip() != '')
+        if allstring or (nonnull.sum() and num[nonnull].isna().any()):
+            vals = np.array(['' if (x is None or (isinstance(x, float) and np.isnan(x))) else str(x) for x in col], dtype=object)
+            d.add_var(nm, vals, 'str%d' % max(1, max((len(s_) for s_ in vals), default=1)))
         else:
-            a = col.to_numpy(dtype=float)
+            a = num.to_numpy(dtype=float)
             ok = a[~np.isnan(a)]
             if ok.size and np.all(ok == np.trunc(ok)):
-                t = 'byte' if ok.max() <= 100 and ok.min() >= -127 else ('int' if ok.max() < 32740 and ok.min() > -32767 else 'long')
+                mx, mn = ok.max(), ok.min()
+                t = 'byte' if (mx <= 100 and mn >= -127) else ('int' if (mx <= 32740 and mn >= -32767) else
+                                                               ('long' if abs(mx) < 2.1e9 and abs(mn) < 2.1e9 else 'double'))
             else:
-                t = 'double' if kind.startswith('delim') else 'double'
+                t = 'double'
             d.add_var(nm, a, t)
+        if good and str(raw) != nm:
+            d.varlab[nm] = str(raw)[:80]
+    return d
+
+
+@command('import', 'insheet')
+def cmd_import(ip, cmd, rest, by):
+    import pandas as pd
+    p = parse_command(rest)
+    if cmd == 'insheet':
+        kind = 'delimited'
+        body = p.body
+    else:
+        bb = p.body.split(None, 1)
+        kind = bb[0] if bb else ''
+        body = bb[1] if len(bb) > 1 else ''
+    fn = p.using if p.using is not None else unquote(body.strip())
+    path = ip.path(fn, must_exist=True)
+    o = p.opts
+    if kind.startswith('exc'):
+        sheet = unquote(o.get('sheet') or '') or 0
+        try:
+            raw = pd.read_excel(path, sheet_name=sheet, header=None, dtype=object)
+        except ImportError:
+            raise StataError('import excel needs openpyxl (loading...) — run the command again', 198)
+        cr = o.get('cellrange')
+        if cr:
+            m = re.match(r'^([A-Za-z]+)(\d+)?(?::([A-Za-z]+)(\d+)?)?$', cr.strip())
+            c0 = _colname_to_idx(m.group(1))
+            r0 = int(m.group(2)) - 1 if m.group(2) else 0
+            c1 = _colname_to_idx(m.group(3)) + 1 if m.group(3) else raw.shape[1]
+            r1 = int(m.group(4)) if m.group(4) else raw.shape[0]
+            raw = raw.iloc[r0:r1, c0:c1]
+        raw = raw.dropna(how='all').dropna(axis=1, how='all')
+        if o.has('firstrow'):
+            names = list(raw.iloc[0])
+            df = raw.iloc[1:].reset_index(drop=True)
+        else:
+            names = [_excel_col(raw.columns.get_loc(c)) for c in raw.columns] if False else \
+                [None] * raw.shape[1]
+            df = raw.reset_index(drop=True)
+            if names[0] is None:
+                names = [_excel_letter(k + (_colname_to_idx(re.match(r'[A-Za-z]+', cr).group(0)) if cr else 0)) for k in range(raw.shape[1])]
+        case = (o.get('case') or 'preserve').strip()
+        d = _frame_to_data(ip, df, names, case, allstring=o.has('allstring'))
+        for k, nm in enumerate(d.vars):
+            if not o.has('firstrow'):
+                d.varlab.pop(nm, None)
+    elif kind.startswith('delim') or kind == '':
+        delim = o.get('delimiters', 5)
+        delim = unquote(delim) if delim else None
+        if delim in ('tab', '\\t'):
+            delim = '\t'
+        enc = unquote(o.get('encoding') or 'utf-8')
+        vn = (o.get('varnames') or '1').strip()
+        try:
+            raw = pd.read_csv(path, sep=delim, header=None, dtype=str, encoding=enc, engine='python',
+                              keep_default_na=False, skipinitialspace=True)
+        except (UnicodeDecodeError, LookupError):
+            raw = pd.read_csv(path, sep=delim, header=None, dtype=str, encoding='latin-1', engine='python',
+                              keep_default_na=False)
+        if vn == 'nonames':
+            names = [None] * raw.shape[1]
+            df = raw
+        else:
+            r = int(vn) - 1
+            names = list(raw.iloc[r])
+            df = raw.iloc[r + 1:].reset_index(drop=True)
+        rr = o.get('rowrange')
+        if rr:
+            a_, _, b_ = rr.partition(':')
+            df = df.iloc[(int(a_) - 2 if a_ else 0):(int(b_) - 1 if b_ else None)]
+        df = df.replace({'': None, 'NA': None, '.': None})
+        case = (o.get('case') or 'lower').strip()
+        d = _frame_to_data(ip, df, names, case, allstring=o.has('stringcols') and o.get('stringcols') == '_all')
+    else:
+        raise StataError(f'import {kind} not supported', 198)
+    if ip.data.n and not o.has('clear') and False:
+        raise StataError('no; dataset in memory has changed since last saved', 4)
+    d.filename = os.path.basename(path)
     ip.data = d
-    ip.txt(f'({len(df.columns)} vars, {comma_int(len(df))} obs)\n')
+    ip.txt(f'({len(d.vars)} var{"s" if len(d.vars) != 1 else ""}, {comma_int(d.n)} obs)\n')
+
+
+def _excel_letter(k):
+    s_ = ''
+    k += 1
+    while k:
+        k, r = divmod(k - 1, 26)
+        s_ = chr(65 + r) + s_
+    return s_
+
+
+def _excel_col(k):
+    return _excel_letter(k)
+
+
+@command('export', 'outsheet')
+def cmd_export2(ip, cmd, rest, by):
+    import pandas as pd
+    p = parse_command(rest)
+    body = p.body.split()
+    if cmd == 'outsheet':
+        kind, vlist = 'delimited', body
+    else:
+        kind, vlist = (body[0] if body else ''), body[1:]
+    d = ip.data
+    vars_ = d.expand_varlist(vlist) if vlist else list(d.vars)
+    m = ip.mark(p)
+    path = ip.path(p.using)
+    if os.path.exists(path) and not p.opts.has('replace') and not kind.startswith('exc'):
+        raise StataError(f'file {p.using} already exists', 602)
+    nolab = p.opts.has('nolabel')
+    cols = {}
+    for v in vars_:
+        x = d.cols[v][m]
+        if d.isstr(v):
+            cols[v] = list(x)
+        else:
+            out = []
+            for val in x:
+                if np.isnan(val):
+                    out.append(None)
+                else:
+                    t = None if nolab else d.value_text(v, val)
+                    out.append(t if t is not None else (int(val) if val == int(val) else float(val)))
+            cols[v] = out
+    df = pd.DataFrame(cols)
+    if kind.startswith('exc'):
+        fr = (p.opts.get('firstrow') or '').strip()
+        if fr.startswith('varl'):
+            df.columns = [d.varlab.get(v) or v for v in vars_]
+        sheet = unquote(p.opts.get('sheet') or 'Sheet1').split(',')[0].strip('"')
+        header = bool(fr)
+        mode = 'a' if (os.path.exists(path) and not p.opts.has('replace')) else 'w'
+        kw = {'if_sheet_exists': 'replace'} if mode == 'a' else {}
+        with pd.ExcelWriter(path, engine='openpyxl', mode=mode, **kw) as w:
+            df.to_excel(w, sheet_name=sheet, index=False, header=header)
+    elif kind.startswith('delim') or cmd == 'outsheet':
+        delim = unquote(p.opts.get('delimiter') or ',')
+        if delim == 'tab':
+            delim = '\t'
+        df.to_csv(path, index=False, sep=delim, header=not p.opts.has('novarnames'))
+    else:
+        raise StataError(f'export {kind} not supported', 198)
+    ip.txt(f'file {p.using} saved\n')
 
 
 # ------------------------------------------------------------------ merge / append
@@ -1138,7 +1275,7 @@ def cmd_list(ip, cmd, rest, by):
     width = len(str(idx[-1] + 1)) + 2
     pad = ' ' * (width + 1)
     ip.txt('\n' + pad + '+' + '-' * total + '+\n')
-    ip.txt(pad + '|' + ''.join((' ' + c[0][:c[2]].rjust(c[2]) + ' ' + ('' if k == len(cols) - 1 else ' ')) for k, c in enumerate(cols)).rstrip().ljust(total) + '|\n')
+    ip.txt(pad + '|' + ''.join((' ' + (c[0][:c[2]].ljust(c[2]) if c[3] else c[0][:c[2]].rjust(c[2])) + ' ' + ('' if k == len(cols) - 1 else ' ')) for k, c in enumerate(cols)).rstrip().ljust(total) + '|\n')
     ip.txt(pad + '|' + '-' * total + '|\n')
     prevkey = None
     for r, i in enumerate(idx):
@@ -1226,10 +1363,10 @@ def cmd_misstable(ip, cmd, rest, by):
     sub = parts[0] if parts else 'summarize'
     vars_ = d.expand_varlist(parts[1:]) if len(parts) > 1 else [v for v in d.vars if not d.isstr(v)]
     if sub.startswith('sum'):
-        ip.txt(f'{"Obs<.":>51}\n')
-        ip.txt(f'{"+------------------------------":>63}\n')
-        ip.txt(f'{"|":>33}{"| Unique":>30}\n')
-        ip.txt(f'{"Variable |     Obs=.     Obs>.     Obs<.  |   values        Min         Max":>79}\n')
+        ip.txt(f'{"Obs<.":>63}\n')
+        ip.txt(f'{"+------------------------------":>79}\n')
+        ip.txt(f'{"|":>48} | Unique\n')
+        ip.txt('    Variable |     Obs=.     Obs>.     Obs<.  | values        Min         Max\n')
         ip.txt('-------------+--------------------------------+------------------------------\n')
         for v in vars_:
             x = d.cols[v]
@@ -1240,7 +1377,8 @@ def cmd_misstable(ip, cmd, rest, by):
             ip.txt(f'{abbrev(v):>12} |')
             ip.res(f'{comma_int(miss):>10}{"":>10}{comma_int(ok.size):>10}')
             ip.txt('  |')
-            ip.res(f'{len(np.unique(ok)):>9}{g_fmt(ok.min()):>12}{g_fmt(ok.max()):>12}\n')
+            nu = len(np.unique(ok))
+            ip.res(f'{(comma_int(nu) if nu <= 500 else ">500"):>7}{g_fmt(ok.min()):>11}{g_fmt(ok.max()):>12}\n')
         ip.txt('-' * 78 + '\n')
     elif sub.startswith('pat'):
         M = np.column_stack([np.isnan(d.cols[v]) for v in vars_])
@@ -1379,3 +1517,200 @@ def cmd_xtsum(ip, cmd, rest, by):
             ip.res(f'{g_fmt(mu, 9) if mu is not None else "":>10}{g_fmt(sd, 9):>12}{g_fmt(mn, 9):>11}{g_fmt(mx, 9):>11}')
             ip.txt(f' |{obs:>16}\n')
         ip.txt('                 |                                            |\n')
+
+
+@command('reshape')
+def cmd_reshape(ip, cmd, rest, by):
+    p = parse_command(rest)
+    words = p.body.split()
+    if not words or words[0] not in ('long', 'wide'):
+        raise StataError('reshape long|wide stubs, i(varlist) j(varname)', 198)
+    mode, stubs = words[0], words[1:]
+    d = ip.data
+    ivars = d.expand_varlist(p.opts.get('i').split()) if p.opts.has('i') else []
+    if not ivars:
+        raise StataError('option i() required', 198)
+    jspec = (p.opts.get('j') or '').split()
+    if not jspec:
+        raise StataError('option j() required', 198)
+    jname, jstr = jspec[0], (p.opts.has('string') or 'string' in jspec[1:])
+    keys = list(zip(*[d.cols[v] for v in ivars]))
+    nd = Data()
+    oldn, oldk = d.n, len(d.vars)
+    if mode == 'long':
+        stubmap, jvals = {}, []
+        for s in stubs:
+            pat = re.compile('^' + re.escape(s).replace('@', '(.+)') + ('' if '@' in s else '(.+)') + '$')
+            for v in d.vars:
+                m = pat.match(v)
+                if m and v not in ivars:
+                    suf = m.group(1)
+                    if not jstr:
+                        try:
+                            float(suf)
+                        except ValueError:
+                            continue
+                    stubmap.setdefault(s.replace('@', ''), {})[suf] = v
+                    if suf not in jvals:
+                        jvals.append(suf)
+        if not stubmap:
+            raise StataError('variable %s not found' % (stubs[0] + '*'), 111)
+        jvals = sorted(jvals) if jstr else sorted(jvals, key=float)
+        used = {v for m in stubmap.values() for v in m.values()}
+        others = [v for v in d.vars if v not in used and v not in ivars]
+        rows = [(r, jv) for r in sorted(range(d.n), key=lambda r: tuple((0, x) if isinstance(x, str) else (1, x) for x in keys[r])) for jv in jvals]
+        nd.n = len(rows)
+        ridx = np.array([r for r, _ in rows], dtype=int)
+
+        def carry(v):
+            nd.add_var(v, d.cols[v][ridx], d.types[v])
+            for a in ('varlab', 'vallab', 'formats'):
+                if v in getattr(d, a):
+                    getattr(nd, a)[v] = getattr(d, a)[v]
+        for v in ivars:
+            carry(v)
+        if jstr:
+            jv = np.array([j for _, j in rows], dtype=object)
+            nd.add_var(jname, jv, 'str%d' % max(len(x) for x in jvals))
+        else:
+            jv = np.array([float(j) for _, j in rows])
+            nd.add_var(jname, jv, 'int' if np.all(jv == np.trunc(jv)) and np.abs(jv).max() < 32740 else 'double')
+        for s, m in stubmap.items():
+            src = list(m.values())
+            isstr = d.isstr(src[0])
+            vals = []
+            for r, j in rows:
+                v = m.get(j)
+                vals.append(d.cols[v][r] if v else ('' if isstr else np.nan))
+            typ = d.types[src[0]]
+            if not isstr:
+                for v2 in src:
+                    typ = promote_type(typ, d.cols[v2]) if d.types[v2] != typ else typ
+            nd.add_var(s, np.array(vals, dtype=object if isstr else float), typ)
+        for v in others:
+            carry(v)
+        nd.labels = dict(d.labels)
+        nd.sortedby = ivars + [jname]
+        ip.data = nd
+        ip.txt('(j = %s)\n' % ' '.join(jvals))
+        lines = [('                     ' + ' '.join(m.values()), s) for s, m in stubmap.items()]
+        _reshape_report(ip, 'Wide', 'Long', oldn, nd.n, oldk, len(nd.vars), len(jvals), jname, lines)
+    else:
+        if jname not in d.vars:
+            raise StataError('variable %s not found' % jname, 111)
+        jcol = d.cols[jname]
+        isj_str = d.isstr(jname)
+        jvals = sorted(set(jcol.tolist()), key=lambda x: (0, x) if isinstance(x, str) else (1, x))
+        jtxt = [str(x) if isj_str else num_to_macro(x) for x in jvals]
+        stubs = [s for s in stubs]
+        for s in stubs:
+            d.resolve(s.replace('@', ''))
+        others = [v for v in d.vars if v not in ivars and v != jname and v not in [s.replace('@', '') for s in stubs]]
+        groups = {}
+        for r, k in enumerate(keys):
+            groups.setdefault(k, []).append(r)
+        gk = sorted(groups, key=lambda t: tuple((0, x) if isinstance(x, str) else (1, x) for x in t))
+        for v in others:
+            for k in gk:
+                vv = d.cols[v][groups[k]]
+                if len(set(map(str, vv.tolist()))) > 1:
+                    raise StataError('variable %s not constant within %s\n    Type reshape error for a list of the problem variables.' % (v, ' '.join(ivars)), 9)
+        nd.n = len(gk)
+        first = np.array([groups[k][0] for k in gk], dtype=int)
+
+        def carry(v):
+            nd.add_var(v, d.cols[v][first], d.types[v])
+            for a in ('varlab', 'vallab', 'formats'):
+                if v in getattr(d, a):
+                    getattr(nd, a)[v] = getattr(d, a)[v]
+        for v in ivars:
+            carry(v)
+        lines = []
+        for s in stubs:
+            base = s.replace('@', '')
+            isstr = d.isstr(base)
+            newnames = []
+            for jv, jt in zip(jvals, jtxt):
+                nm = s.replace('@', jt) if '@' in s else base + jt
+                vals = []
+                for k in gk:
+                    hit = [r for r in groups[k] if jcol[r] == jv]
+                    if len(hit) > 1:
+                        raise StataError('values of variable %s not unique within %s' % (jname, ' '.join(ivars)), 9)
+                    vals.append(d.cols[base][hit[0]] if hit else ('' if isstr else np.nan))
+                nd.add_var(nm, np.array(vals, dtype=object if isstr else float), d.types[base])
+                if base in d.vallab:
+                    nd.vallab[nm] = d.vallab[base]
+                nd.varlab[nm] = '%s %s' % (jt, d.varlab.get(base, base))
+                newnames.append(nm)
+            lines.append((base, ' '.join(newnames)))
+        for v in others:
+            carry(v)
+        nd.labels = dict(d.labels)
+        nd.sortedby = list(ivars)
+        ip.data = nd
+        ip.txt('(j = %s)\n' % ' '.join(jtxt))
+        _reshape_report(ip, 'Long', 'Wide', oldn, nd.n, oldk, len(nd.vars), len(jvals), jname, lines, wide=True)
+
+
+def _reshape_report(ip, a, b, n0, n1, k0, k1, nj, jname, lines, wide=False):
+    bar = '-' * 77 + '\n'
+    ip.txt('\nData%s%s   ->   %s\n' % (' ' * (35 - len(a)), a, b) + bar)
+    ip.txt('Number of observations%s' % ''.rjust(0)); ip.res('%17s' % comma_int(n0)); ip.txt('   ->   '); ip.res('%-11s\n' % comma_int(n1))
+    ip.txt('Number of variables   '); ip.res('%17s' % comma_int(k0)); ip.txt('   ->   '); ip.res('%-11s\n' % comma_int(k1))
+    lab = 'j variable (%d values)' % nj
+    if wide:
+        ip.txt(lab.ljust(39 - len(jname))); ip.res(jname); ip.txt('   ->   (dropped)\n')
+    else:
+        ip.txt(lab.ljust(39) + '   ->   '); ip.res(jname + '\n')
+    ip.txt('xij variables:\n')
+    for l, r in lines:
+        if wide:
+            ip.res('%39s' % l); ip.txt('   ->   '); ip.res(r + '\n')
+        else:
+            ip.res('%39s' % l.strip()); ip.txt('   ->   '); ip.res(r + '\n')
+    ip.txt(bar)
+
+
+def do_input(ip, spec, rows):
+    import shlex
+    toks = spec.replace(',', ' ').split()
+    specs, typ = [], 'float'
+    for t in toks:
+        if t in ('byte', 'int', 'long', 'float', 'double') or re.match(r'^str(\d+|L)$', t):
+            typ = t
+            continue
+        if t in ('clear', 'automatic', 'auto'):
+            continue
+        specs.append((t, typ))
+        typ = 'float'
+    d = ip.data
+    if d.vars and d.n:
+        raise StataError('input: adding to existing data is not supported; use clear first', 110)
+    vals = [[] for _ in specs]
+    for r in rows:
+        if not r.strip():
+            continue
+        try:
+            parts = shlex.split(r, posix=True)
+        except ValueError:
+            parts = r.split()
+        for k, (nm, t) in enumerate(specs):
+            x = parts[k] if k < len(parts) else ''
+            if t.startswith('str'):
+                vals[k].append(x)
+            else:
+                try:
+                    vals[k].append(np.nan if x in ('', '.') or re.match(r'^\.[a-z]$', x) else float(x))
+                except ValueError:
+                    raise StataError("'%s' cannot be read as a number" % x, 198)
+    nd = Data()
+    nd.n = len(vals[0]) if vals else 0
+    for (nm, t), v in zip(specs, vals):
+        check_name(nm) if callable(check_name) else None
+        if t.startswith('str'):
+            w = max([len(s) for s in v] + [1])
+            nd.add_var(nm, np.array(v, dtype=object), 'str%d' % w if t == 'strL' else t)
+        else:
+            nd.add_var(nm, store_cast(np.array(v, dtype=float), t), t)
+    ip.data = nd

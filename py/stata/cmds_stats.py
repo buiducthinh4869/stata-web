@@ -623,7 +623,6 @@ def _corr_table(ip, vars_, C, P, star, sig=False):
                 if j > i:
                     break
                 s = f'{C[i, j]:.4f}'
-                s = s.replace('0.', '.') if not s.startswith('-') else '-' + s[1:].replace('0.', '.', 1)
                 if i == j:
                     s = '1.0000'
                 st = '*' if (star and P is not None and i != j and P[i, j] < star) else ' '
