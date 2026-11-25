@@ -366,7 +366,7 @@ def cmd_signrank(ip, cmd, rest, by):
     rp, rn = r[dd > 0].sum(), r[dd < 0].sum()
     e = N * (N + 1) / 4
     v = N * (N + 1) * (2 * N + 1) / 24
-    _, cnt = np.unique(np.abs(dd), return_counts=True)
+    _, cnt = np.unique(np.abs(dd[dd != 0]), return_counts=True)
     adj_t = -(cnt ** 3 - cnt).sum() / 48
     nzero = int((dd == 0).sum())
     adj_z = -nzero * (nzero + 1) * (2 * nzero + 1) / 24
