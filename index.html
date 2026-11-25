@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stata Web — mô phỏng Stata cho suy diễn nhân quả</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo">S</span> Stata&nbsp;Web <span class="sub">mô phỏng Stata trong trình duyệt</span></div>
+  <div class="tools">
+    <button id="btnMount" title="Chọn một thư mục trên máy làm thư mục làm việc (Chrome/Edge)">📁 Mở thư mục làm việc</button>
+    <label class="btn" title="Tải file .dta / .csv / .xlsx / .do từ máy lên">⬆ Tải file lên<input type="file" id="fileUp" multiple hidden></label>
+    <button id="btnZip" title="Tải toàn bộ file kết quả về máy">⬇ Tải tất cả (.zip)</button>
+    <select id="exSel"><option value="">— Do-file mẫu —</option></select>
+    <button id="btnStop" class="danger" title="Dừng lệnh đang chạy (khởi động lại engine)">■ Dừng</button>
+    <a class="help" href="#" id="btnHelp">Hướng dẫn</a>
+  </div>
+</header>
+<main class="layout">
+  <aside class="left">
+    <section class="panel grow">
+      <h3>Review</h3>
+      <ol id="review"></ol>
+    </section>
+    <section class="panel grow">
+      <h3>Files <span id="cwd" class="muted"></span></h3>
+      <ul id="files"></ul>
+    </section>
+  </aside>
+  <section class="center">
+    <nav class="tabs">
+      <button data-tab="results" class="active">Results</button>
+      <button data-tab="editor">Do-file Editor</button>
+      <button data-tab="data">Data Browser</button>
+      <button data-tab="graph">Graph <span id="gcount"></span></button>
+    </nav>
+    <div class="tab active" id="tab-results">
+      <pre id="results"></pre>
+    </div>
+    <div class="tab" id="tab-editor">
+      <div class="edtools">
+        <span id="edName">untitled.do</span>
+        <label class="btn">Mở .do<input type="file" id="doOpen" accept=".do,.txt" hidden></label>
+        <button id="edSave">Lưu</button>
+        <button id="edRunAll" class="primary">▶ Chạy tất cả (Ctrl+D)</button>
+        <button id="edRunSel">▶ Chạy phần chọn (Ctrl+Shift+D)</button>
+      </div>
+      <div class="edwrap"><pre id="lineno"></pre><textarea id="editor" spellcheck="false" placeholder="* Viết do-file ở đây, hoặc chọn một do-file mẫu ở thanh trên"></textarea></div>
+    </div>
+    <div class="tab" id="tab-data">
+      <div class="edtools"><button id="dPrev">◀</button><span id="dInfo"></span><button id="dNext">▶</button><button id="dRefresh">Làm mới</button></div>
+      <div class="tablewrap"><table id="dtable"></table></div>
+    </div>
+    <div class="tab" id="tab-graph">
+      <div class="edtools"><select id="gSel"></select><button id="gSave">⬇ Lưu PNG</button></div>
+      <div class="gwrap"><img id="gImg" alt=""></div>
+    </div>
+    <div class="cmdbar">
+      <span class="prompt">.</span>
+      <input id="cmd" autocomplete="off" spellcheck="false" placeholder="Gõ lệnh Stata rồi Enter (↑/↓ để gọi lại lệnh cũ)">
+      <span id="status" class="muted">Đang khởi động…</span>
+    </div>
+  </section>
+  <aside class="right">
+    <section class="panel grow">
+      <h3>Variables</h3>
+      <input id="varFilter" placeholder="Lọc biến…">
+      <table id="vars"><thead><tr><th>Name</th><th>Label</th></tr></thead><tbody></tbody></table>
+    </section>
+    <section class="panel">
+      <h3>Properties</h3>
+      <div id="props" class="muted">Chọn một biến</div>
+    </section>
+  </aside>
+</main>
+<dialog id="helpDlg">
+  <h2>Hướng dẫn nhanh</h2>
+  <ul>
+    <li><b>Mở thư mục làm việc</b> (Chrome/Edge): chọn thư mục trên máy. Các lệnh <code>use</code>, <code>save</code>, <code>graph export</code>, <code>esttab using</code>, <code>outreg2</code>, <code>log using</code> đọc/ghi thẳng vào thư mục đó.</li>
+    <li>Trình duyệt khác: kéo thả file vào trang hoặc dùng <b>Tải file lên</b>; tải kết quả bằng nút ⬇ trong Files hoặc <b>Tải tất cả</b>.</li>
+    <li>Đường dẫn Windows trong do-file (vd. <code>D:\...\data.dta</code>) tự quy về file cùng tên trong thư mục làm việc.</li>
+    <li>Dữ liệu chỉ xử lý trong trình duyệt của bạn, không gửi đi đâu.</li>
+    <li>Hỗ trợ các lệnh trong bộ do-file mẫu: RCT, IV (ivregress, ivreg2), DID (xtreg, reghdfe, didregress, csdid, sdid), PSM (psmatch2, teffects, kmatch), RDD (rdrobust, rdplot, rddensity), SCM (synth2), cùng lệnh dữ liệu, bảng (esttab, outreg2) và đồ thị.</li>
+    <li>Lưu ý: số ngẫu nhiên (<code>rnormal</code>, <code>runiform</code>) không trùng chuỗi của Stata, nên dữ liệu mô phỏng cho kết quả gần nhưng không giống hệt Stata.</li>
+  </ul>
+  <button onclick="this.closest('dialog').close()">Đóng</button>
+</dialog>
+<div id="drop" class="drop">Thả file vào đây để tải lên thư mục làm việc</div>
+<script src="app.js"></script>
+</body>
+</html>

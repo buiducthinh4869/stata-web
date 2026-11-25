@@ -1,0 +1,29 @@
+{
+ "data": [
+  "Dữ liệu bảng.dta",
+  "Dữ liệu chéo.dta",
+  "rdrobust_senate.dta",
+  "rpt_smetraining.dta",
+  "student_test_data.dta",
+  "synth_smoking.dta"
+ ],
+ "do": [
+  "DID_sample_do_file.do",
+  "DID_sample_dofile.do",
+  "DID_time_vary_treatment_sample_dofile.do",
+  "IV_sample_dofile.do",
+  "PSM_DID_sample_dofile.do",
+  "PSM_sample_dofile.do",
+  "RCT_sample_dofile.do",
+  "RDD_sample_dofile.do",
+  "Synthetic_DID_sample_dofile.do",
+  "Synthetic_contol_method_sample_dofile.do",
+  "buoi1_stata_mau.do",
+  "buoi2_stata_mau.do",
+  "ddk2011_rct_core.do",
+  "psm_cattaneo2.do",
+  "rdd_senate.do",
+  "rpt_iv_buoi4.do",
+  "scm_california.do"
+ ]
+}
