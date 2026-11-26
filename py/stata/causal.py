@@ -692,9 +692,9 @@ def cmd_teffects(ip, cmd, rest, by):
     q0 = ip.quiet
     ip.quiet += 1
     try:
-        line = f'{model} {tv} {" ".join(xvars)}'
+        line = f'{model} {tv} {" ".join(xvars)} if !missing({yv})'
         if p.if_exp:
-            line += f' if {p.if_exp}'
+            line += f' & ({p.if_exp})'
         ip.dispatch(line)
         ps = ip.est['predict'](ip, 'pr', None)
         ps_V = ip.est['V']
@@ -754,7 +754,7 @@ def cmd_teffects(ip, cmd, rest, by):
         return grp[dist <= kth + 1e-12]
     # treatment-model design (same columns as the logit/probit fit)
     from .estim import prepare_linear, assemble, detect_omitted
-    pl = parse_command(' '.join(xvars) + (f' if {p.if_exp}' if p.if_exp else ''))
+    pl = parse_command(' '.join(xvars) + f' if !missing({yv})' + (f' & ({p.if_exp})' if p.if_exp else ''))
     _, _, pcols, pmask, _, _ = prepare_linear(ip, pl, d, split_top(' '.join(xvars)), tv)
     Xall, _, pinfo = assemble(pcols, pmask, cons=True)
     act = detect_omitted(Xall, pinfo, cons=True)
