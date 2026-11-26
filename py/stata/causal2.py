@@ -192,51 +192,68 @@ def cmd_synth2(ip, cmd, rest, by):
         raise StataError('options trunit() and trperiod() required', 198)
     placebo = p.opts.get('placebo')
     show_fig = p.opts.has('fig') or cmd == 'synth2'
-    ip.txt('\n(running synthetic control optimisation ...)\n')
     res = run_synth(ip, d, p, trunit, trperiod)
     units, times = res.units, res.times
     trlab = d.value_text(unitvar, trunit) or g_fmt(trunit)
-    # ----- output
-    ip.txt(f'\nSynthetic Control Method for Comparative Case Studies\n')
-    ip.txt('-' * 78 + '\n')
-    ip.txt(f'  Treated unit: {trlab}   Treatment time: {g_fmt(trperiod)}\n')
-    ip.txt(f'  Number of control units = {len(res.donors)}   Pre-treatment periods = {len(res.pre)}'
-           f'   Post-treatment periods = {len(res.post)}\n')
-    ip.txt(f'  Root Mean Squared Prediction Error (pre-treatment) = ')
-    ip.res(f'{res.rmspe:.4f}\n')
-    ip.txt('-' * 78 + '\n')
-    ip.txt('\nCovariate balance and covariate weights (V)\n' + '-' * 78 + '\n')
-    ip.txt(f'{"Covariate":<24}|{"V.weight":>11}{"Treated":>12}{"Synthetic":>12}{"Bias":>10}{"Avg. ctrl":>11}\n')
-    ip.txt('-' * 24 + '+' + '-' * 56 + '\n')
+    pre_y = res.y_tr[res.pre]
+    r2 = 1 - np.sum((pre_y - res.y_syn[res.pre]) ** 2) / np.sum((pre_y - pre_y.mean()) ** 2)
+    D80 = '-' * 80 + '\n'
+    ip.txt('Fitting results in the pretreatment periods:\n' + D80)
+    ip.txt(' Number of Control Units  = '); ip.res(f'{len(res.donors):>10}')
+    ip.txt('     Root Mean Squared Error  = '); ip.res(f'{res.rmspe:>10.5f}\n')
+    ip.txt(' Number of Covariates     = '); ip.res(f'{len(res.rows):>10}')
+    ip.txt('     R-squared                = '); ip.res(f'{r2:>10.5f}\n')
+    ip.txt(D80)
+    ip.txt('\nCovariate balance in the pretreatment periods:\n' + D80)
+    ip.txt('   Covariate   |  V.weight    Treated    Synthetic Control     Average Control  \n')
+    ip.txt('               |                        Value          Bias   Value        Bias \n')
+    ip.txt('-' * 15 + '+' + '-' * 64 + '\n')
     bal = []
     for k, (lab, var, per) in enumerate(res.rows):
         xt = res.X[k, res.tr_i]
         xs = float(res.X[k, res.donors] @ res.w)
         avg = float(np.mean(res.X[k, res.donors]))
         bal.append([xt, xs, avg])
-        ip.txt(f'{lab[:23]:<24}|')
-        ip.res(f'{res.v[k]:>11.4f}{g_fmt(xt, 9):>12}{g_fmt(xs, 9):>12}{(xs - xt) / xt * 100 if xt else 0:>9.2f}%{g_fmt(avg, 9):>11}\n')
-    ip.txt('-' * 78 + '\n')
-    ip.txt('\nOptimal unit weights (W)\n' + '-' * 40 + '\n')
-    ip.txt(f'{"Unit":<26}|{"U.weight":>12}\n' + '-' * 26 + '+' + '-' * 13 + '\n')
+        b1 = (xs - xt) / xt * 100 if xt else 0
+        b2 = (avg - xt) / xt * 100 if xt else 0
+        ip.txt(f'{lab[-14:]:>14} |')
+        ip.res(f'{res.v[k]:>9.4f}{xt:>12.4f}{xs:>12.4f}{b1:>9.2f}%{avg:>11.4f}{b2:>9.2f}%\n')
+    ip.txt(D80)
+    ip.txt('Note: "V.weight" is the optimal covariate weight in the diagonal of V matrix.\n'
+           '      "Synthetic Control" is the weighted average of donor units with optimal\n'
+           '      weights.\n'
+           '      "Average Control" is the simple average of all control units with equal\n'
+           '      weights.\n')
+    ip.txt('\nOptimal Unit Weights:\n' + '-' * 26 + '\n     Unit    |    U.weight\n' + '-' * 13 + '+' + '-' * 12 + '\n')
+    zero = []
     for j, w in sorted(zip(res.donors, res.w), key=lambda t: -t[1]):
-        if w > 1e-4:
-            lab = d.value_text(unitvar, units[j]) or g_fmt(units[j])
-            ip.txt(f'{lab[:25]:<26}|')
-            ip.res(f'{w:>12.4f}\n')
-    ip.txt('-' * 40 + '\n')
-    ip.txt('Note: units not listed have weight < 0.0001\n')
-    ip.txt('\nPrediction results in the post-treatment periods\n' + '-' * 60 + '\n')
-    ip.txt(f'{"Time":>10} |{"Actual":>12}{"Synthetic":>12}{"Treatment effect":>18}\n' + '-' * 11 + '+' + '-' * 48 + '\n')
+        lab = d.value_text(unitvar, units[j]) or g_fmt(units[j])
+        if round(w, 3) > 0:
+            ip.txt(f'{lab[-12:]:>12} |'); ip.res(f'{round(w, 3):>11.4f} \n')
+        else:
+            zero.append((j, lab))
+    ip.txt('-' * 26 + '\n')
+    if zero:
+        words = ['The', 'unit'] + [lb for _, lb in sorted(zero)] + ['in', 'the', 'donor', 'pool', 'get', 'a', 'weight', 'of', '0.']
+        line, first = 'Note:', True
+        for w_ in words:
+            if len(line) + 1 + len(w_) > 78:
+                ip.txt(line + '\n'); line = '     '
+            line += ' ' + w_
+        ip.txt(line + '\n')
+    ip.txt('\nPrediction results in the posttreatment periods:\n' + '-' * 59 + '\n')
+    ip.txt(' Time | Actual Outcome  Synthetic Outcome  Treatment Effect\n' + '-' * 6 + '+' + '-' * 52 + '\n')
     for k in res.post:
-        ip.txt(f'{g_fmt(times[k]):>10} |')
-        ip.res(f'{g_fmt(res.y_tr[k], 9):>12}{g_fmt(res.y_syn[k], 9):>12}{g_fmt(res.gap[k], 9):>18}\n')
-    ip.txt('-' * 11 + '+' + '-' * 48 + '\n')
-    ip.txt(f'{"Mean":>10} |')
-    ip.res(f'{g_fmt(np.mean(res.y_tr[res.post]), 9):>12}{g_fmt(np.mean(res.y_syn[res.post]), 9):>12}{g_fmt(np.mean(res.gap[res.post]), 9):>18}\n')
-    ip.txt('-' * 60 + '\n')
-    e_sc = {'T0': len(res.pre), 'T1': len(res.post), 'J': len(res.donors), 'K': len(res.rows),
-            'mspe': res.pre_mspe, 'rmse': res.rmspe, 'att': float(np.mean(res.gap[res.post]))}
+        ip.txt(f'{g_fmt(times[k]).strip():>5} |')
+        ip.res(f'{res.y_tr[k]:>14.4f}{res.y_syn[k]:>19.4f}{res.gap[k]:>18.4f} \n')
+    ip.txt('-' * 6 + '+' + '-' * 52 + '\n')
+    att = float(np.mean(res.gap[res.post]))
+    ip.txt(' Mean |')
+    ip.res(f'{np.mean(res.y_tr[res.post]):>14.4f}{np.mean(res.y_syn[res.post]):>19.4f}{att:>18.4f} \n')
+    ip.txt('-' * 59 + '\n')
+    ip.txt(f'Note: The average treatment effect over the posttreatment period is {att:.4f}.\n')
+    e_sc = {'N': len(units) * len(times), 'T': len(times), 'T0': len(res.pre), 'T1': len(res.post),
+            'K': len(res.rows), 'J': len(units), 'rmse': res.rmspe, 'r2': r2, 'att': att, 'mspe': res.pre_mspe}
     U = E.Matrix(np.column_stack([[units[j] for j in res.donors], res.w]),
                  [str(int(units[j])) if float(units[j]).is_integer() else str(units[j]) for j in res.donors],
                  ['unit', 'U.weight'])

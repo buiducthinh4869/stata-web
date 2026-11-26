@@ -734,68 +734,110 @@ def cmd_teffects(ip, cmd, rest, by):
         y1 = np.array([y[i] if T[i] else imputed1[i] for i in range(n)])
         y0 = np.array([imputed0[i] if T[i] else y[i] for i in range(n)])
         tau = float(np.mean(y1 - y0))
-    # AI (2006) variance with conditional variance from J=2 within-group matches
-    J = 2
+    # ---- Abadie-Imbens variance with the AI (2016) correction for the estimated propensity score
+    L = 2
+    vm = re.search(r'nn\(\s*(\d+)\s*\)', p.opts.get('vce') or '')
+    if vm:
+        L = max(2, int(vm.group(1)))
+
+    def H(i, grp):
+        """i plus its L-1 nearest units (ties included) in its own treatment group."""
+        dist = np.abs(s[grp] - s[i])
+        dist[grp == i] = np.inf
+        m = min(L - 1, len(grp) - 1)
+        kth = np.partition(dist, m - 1)[m - 1]
+        return np.r_[i, grp[dist <= kth + 1e-12]]
+
+    def Hother(i, grp):
+        dist = np.abs(s[grp] - s[i])
+        kth = np.partition(dist, min(L, len(grp)) - 1)[min(L, len(grp)) - 1]
+        return grp[dist <= kth + 1e-12]
+    # treatment-model design (same columns as the logit/probit fit)
+    from .estim import prepare_linear, assemble, detect_omitted
+    pl = parse_command(' '.join(xvars) + (f' if {p.if_exp}' if p.if_exp else ''))
+    _, _, pcols, pmask, _, _ = prepare_linear(ip, pl, d, split_top(' '.join(xvars)), tv)
+    Xall, _, pinfo = assemble(pcols, pmask, cons=True)
+    act = detect_omitted(Xall, pinfo, cons=True)
+    Xf = np.full((d.n, len(act)), np.nan)
+    Xf[pmask] = Xall[:, act]
+    Xc = Xf[base]
+    Vt = np.asarray(ps_V)[np.ix_(act, act)]
+    if model == 'probit':
+        fden = sps.norm.pdf(sps.norm.ppf(np.clip(s, 1e-15, 1 - 1e-15)))
+    else:
+        fden = s * (1 - s)
     sig2 = np.zeros(n)
-    for grp in (idx1, idx0):
-        st = s[grp]
-        for a, i in enumerate(grp):
-            dist = np.abs(st - s[i])
-            dist[a] = np.inf
-            kth = np.partition(dist, min(J, len(dist) - 1) - 1)[min(J, len(dist) - 1) - 1]
-            sel = np.flatnonzero(dist <= kth + 1e-12)
-            Jn = len(sel)
-            sig2[i] = Jn / (Jn + 1) * (y[i] - y[grp[sel]].mean()) ** 2
+    C1 = np.zeros((n, Xc.shape[1]))
+    C0 = np.zeros_like(C1)
+    for i in range(n):
+        own, oth = (idx1, idx0) if T[i] else (idx0, idx1)
+        h = H(i, own)
+        sig2[i] = np.var(y[h], ddof=1)
+        for grp, C, h_ in ((own, C1 if T[i] else C0, h), (oth, C0 if T[i] else C1, Hother(i, oth))):
+            Xs, ys = Xc[h_], y[h_]
+            if len(h_) > 1:
+                C[i] = ((Xs - Xs.mean(0)) * (ys - ys.mean())[:, None]).sum(0) / (len(h_) - 1)
     Kw = np.zeros(n)
     Kw2 = np.zeros(n)
     for i, js in zip(idx1, m_to0):
         Kw[js] += 1.0 / len(js)
         Kw2[js] += 1.0 / len(js) ** 2
     if atet:
-        V = 0.0
+        m_c = match(idx0, idx1, M)
+        y1a = y.copy()
+        for i, js in zip(idx0, m_c):
+            y1a[i] = y[js].mean()
+        y0a = y.copy()
         for i in idx1:
-            V += (y[i] - imputed0[i] - tau) ** 2
-        V += np.sum((Kw[idx0] ** 2 - Kw2[idx0]) * sig2[idx0])
+            y0a[i] = imputed0[i]
+        V = np.sum((y[idx1] - y0a[idx1] - tau) ** 2) + np.sum((Kw[idx0] ** 2 - Kw2[idx0]) * sig2[idx0])
         V /= N1 ** 2
+        pbar = N1 / n
+        ct = ((C1 + (s / (1 - s))[:, None] * C0) * fden[:, None]).mean(0) / pbar
+        dt = (Xc * (fden * (y1a - y0a - tau))[:, None]).mean(0) / pbar
+        V = V - ct @ Vt @ ct + dt @ Vt @ dt
     else:
         for i, js in zip(idx0, m_to1):
             Kw[js] += 1.0 / len(js)
             Kw2[js] += 1.0 / len(js) ** 2
-        V = np.sum((y1 - y0 - tau) ** 2) + np.sum((Kw ** 2 - Kw2) * sig2)
+        V = np.sum((y1 - y0 - tau) ** 2) + np.sum((Kw ** 2 + (2 * M - 1) / M * Kw) * sig2)
         V /= n ** 2
+        c = ((C1 / s[:, None] + C0 / (1 - s)[:, None]) * fden[:, None]).mean(0)
+        V = V - c @ Vt @ c
+    V = max(V, 0.0)
     se = math.sqrt(V)
-    tl = d.value_text(tv, 1) or '1'
-    cl = d.value_text(tv, 0) or '0'
+    tl = d.value_text(tv, 1)
+    cl = d.value_text(tv, 0)
     stat = 'ATET' if atet else 'ATE'
     est = {'names': [f'{stat}:r1vs0.{tv}'], 'b': np.array([tau]), 'V': np.array([[V]]), 'colinfo': None,
            'df_r': None, 'depvar': yv, 'sample': base, 'cmd': 'teffects', 'stat': 'z',
            'scalars': {'N': n, 'n1': N1, 'n0': n - N1, 'k_nneighbor': M},
            'macros': {'cmd': 'teffects', 'subcmd': sub, 'stat': stat.lower(), 'tmodel': model, 'depvar': yv,
-                      'tvar': tv}}
+                      'tvar': tv, 'vce': 'robust', 'vcetype': 'AI robust'}}
     ip.set_estimation(est)
     ip.txt('\nTreatment-effects estimation' + f'{"Number of obs":>32}      = ')
     ip.res(f'{comma_int(n):>10}\n')
     ip.txt('Estimator      : propensity-score matching     Matches: requested = ')
     ip.res(f'{M:>10}\n')
-    mins = min(len(js) for js in m_to0)
-    maxs = max(len(js) for js in m_to0)
-    ip.txt(f'Outcome model  : matching{"min":>37} = ')
-    ip.res(f'{mins:>10}\n')
-    ip.txt(f'Treatment model: {model}{"max":>{45 - len(model)}} = ')
-    ip.res(f'{maxs:>10}\n')
+    mm_ = [len(js) for js in m_to0] + ([] if atet else [len(js) for js in m_to1])
+    ip.txt('Outcome model  : matching' + ' ' * 37 + 'min = ')
+    ip.res(f'{min(mm_):>10}\n')
+    ip.txt(('Treatment model: ' + model).ljust(62) + 'max = ')
+    ip.res(f'{max(mm_):>10}\n')
     ip.txt('-' * 78 + '\n')
-    ip.txt(f'{"":>12} |{"AI robust":>24}\n')
+    ip.txt('             |              AI robust\n')
     ip.txt(f'{abbrev(yv):>12} | Coefficient  std. err.      z    P>|z|     [95% conf. interval]\n')
     ip.txt('-' * 13 + '+' + '-' * 64 + '\n')
     ip.txt(f'{stat:<12} |\n')
     ip.txt(f'{abbrev(tv):>12} |\n')
-    ip.txt(f'{"(1 vs 0)":>11}  |')
-    z = tau / se
+    if tl and cl:
+        ip.txt(f'{"(" + tl:>11}  |\n{"vs":>11}  |\n{cl + ")":>11}  |')
+    else:
+        ip.txt(f'{"(1 vs 0)":>11}  |')
+    z = tau / se if se > 0 else np.nan
     pz = 2 * sps.norm.sf(abs(z))
-    ip.res(f'{g_fmt(tau, 9):>11}{g_fmt(se, 9):>11}{z:9.2f}{pz:8.3f}{g_fmt(tau - 1.96 * se, 9):>13}{g_fmt(tau + 1.96 * se, 9):>12}\n')
+    ip.res(f'{g_fmt(tau, 9):>11}{g_fmt(se, 9):>11}{z:9.2f}{pz:8.3f}{g_fmt(tau - 1.959964 * se, 9):>13}{g_fmt(tau + 1.959964 * se, 9):>12}\n')
     ip.txt('-' * 78 + '\n')
-    ip.txt('Note: standard error uses the Abadie-Imbens (2006) formula; the web emulator does\n'
-           '      not add the correction for the estimated propensity score (AI 2016).\n')
 
 
 # ================================================================ kmatch
@@ -836,8 +878,13 @@ def cmd_kmatch(ip, cmd, rest, by):
     srt = np.sort(pc)
     pos = np.clip(np.searchsorted(srt, pt), 1, len(srt) - 1)
     dist = np.minimum(np.abs(pt - srt[pos - 1]), np.abs(pt - srt[pos]))
-    bw = float(1.5 * np.quantile(dist, 0.9))
-    bw = max(bw, 1e-6)
+    if len(srt) == 1:
+        dist = np.abs(pt - srt[0])
+    # kmatch: 1.5 x 90th percentile (mm_quantile, Stata definition) of nonzero pair-matching distances
+    from .cmds_more import _pctiles
+    nz = dist[dist > 0]
+    bw = float(_pctiles(nz, np.ones(len(nz)), [90.0])[0] * 1.5) if len(nz) else 0.0
+    bw = bw + np.finfo(float).eps * max(bw, 1.0) + np.finfo(float).tiny
     U = (pc[None, :] - pt[:, None]) / bw
     K = np.where(np.abs(U) < 1, 0.75 * (1 - U * U), 0.0)
     rs = K.sum(axis=1)
@@ -852,17 +899,21 @@ def cmd_kmatch(ip, cmd, rest, by):
         cf = W[on] @ y[c_idx]
         att = float(np.mean(yt - cf))
         n1 = int(on.sum())
-        var1 = yt.var(ddof=1)
         yc = y[c_idx]
-        mu0 = np.sum(wc * yc) / wc.sum() if wc.sum() > 0 else np.nan
-        var0 = np.sum(wc * (yc - mu0) ** 2) / wc.sum()
-        se = math.sqrt(var1 / n1 + var0 * np.sum(wc ** 2) / n1 ** 2)
+        W0 = wc.sum()
+        b0 = np.sum(wc * yc) / W0 if W0 > 0 else np.nan
+        # kmatch influence function (no regression adjustment): -total- of IF / N
+        IF = np.zeros(len(t_idx) + len(c_idx))
+        IF[:len(t_idx)][on] = (yt - yt.mean()) / n1
+        IF[len(t_idx):] = -(wc / W0) * (yc - b0)
+        Nall = len(IF)
+        se = math.sqrt(Nall / (Nall - 1) * np.sum((IF - IF.mean()) ** 2))
         res.append((yv, att, se))
-    ip.txt(f'\n(computing bandwidth ... done)\n\nPropensity-score kernel matching{"Number of obs":>32}     = ')
-    ip.res(f'{comma_int(int(base.sum())):>9}\n')
-    ip.txt(f'{"Kernel":>59}        = ')
-    ip.res(f'{"epan":>9}\n\n')
-    ip.txt(f'Treatment   : {tv} = 1\nMetric      : ps\nCovariates  : {" ".join(xvars)}\n\n')
+    ip.txt('\n(computing bandwidth ... done)\n\n' + 'Propensity-score kernel matching'.ljust(48) + 'Number of obs'.ljust(18) + '= ')
+    ip.res(f'{comma_int(int(base.sum())):>10}\n')
+    ip.txt(' ' * 48 + 'Kernel'.ljust(18) + '= ')
+    ip.res(f'{"epan":>10}\n\n')
+    ip.txt(f'Treatment   : {tv} = 1\nCovariates  : {" ".join(xvars)}\nPS model    : logit (pr)\n\n')
     ip.txt('Matching statistics\n' + '-' * 78 + '\n')
     ip.txt('             |              Matched             |             Controls\n')
     ip.txt('             |       Yes        No       Total  |       Used     Unused       Total\n')
@@ -873,19 +924,21 @@ def cmd_kmatch(ip, cmd, rest, by):
     ip.txt('-' * 78 + '\n')
     ip.txt(f'\nBandwidth: {bw:.6f} (pair-matching based)\n\n')
     ip.txt('Treatment-effects estimation\n' + '-' * 78 + '\n')
-    ip.txt(f'{"":>12} |   Coefficient  Std. err.      t    P>|t|     [95% conf. interval]\n')
+    ip.txt(f'{"":>12} | Coefficient  Std. err.      t    P>|t|     [95% conf. interval]\n')
     ip.txt('-' * 13 + '+' + '-' * 64 + '\n')
     for yv, att, se in res:
         ip.txt(f'{abbrev(yv):>12} |\n{"ATT":>12} |')
         z = att / se
-        ip.res(f'{g_fmt(att, 9):>13}{g_fmt(se, 9):>11}{z:9.2f}{2 * sps.norm.sf(abs(z)):8.3f}{g_fmt(att - 1.96 * se, 9):>13}{g_fmt(att + 1.96 * se, 9):>12}\n')
+        dfr = int(base.sum()) - 1
+        tc = sps.t.ppf(0.975, dfr)
+        ip.res(f'{g_fmt(att, 9):>11}{g_fmt(se, 9):>11}{z:9.2f}{2 * sps.t.sf(abs(z), dfr):8.3f}{g_fmt(att - tc * se, 9):>13}{g_fmt(att + tc * se, 9):>12}\n')
     ip.txt('-' * 78 + '\n')
-    ip.txt('Note: standard errors treat the matching weights as fixed (no bootstrap).\n')
     ip.kmatch_last = {'xvars': xvars, 'tv': tv, 't_idx': t_idx, 'c_idx': c_idx, 'wc': wc, 'on': on,
                       'ps': ps, 'base': base}
     ip.set_estimation({'names': [f'ATT:{res[0][0]}'], 'b': np.array([res[0][1]]),
                        'V': np.array([[res[0][2] ** 2]]), 'colinfo': None, 'cmd': 'kmatch', 'stat': 'z',
-                       'scalars': {'N': int(base.sum()), 'bwidth': bw}, 'macros': {'cmd': 'kmatch'},
+                       'df_r': int(base.sum()) - 1,
+                       'scalars': {'N': int(base.sum()), 'bwidth': bw}, 'macros': {'cmd': 'kmatch', 'subcmd': 'ps', 'kernel': 'epan', 'tvar': tv},
                        'sample': base, 'depvar': res[0][0]})
 
 
