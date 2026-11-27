@@ -54,7 +54,9 @@ button.danger { color: var(--err); }
 #dtable { border-collapse: collapse; font-family: Consolas, monospace; font-size: 12px; }
 #dtable th, #dtable td { border: 1px solid #e3e8ec; padding: 2px 8px; text-align: right; white-space: nowrap; }
 #dtable th { position: sticky; top: 0; background: #f5f7f9; }
-#dtable td.str { text-align: left; }
+#dtable td.num { color: #111; }
+#dtable td.str { text-align: left; color: #c62828; }
+#dtable td.lab { color: #1565c0; }
 .gwrap { flex: 1; overflow: auto; display: grid; place-items: center; background: #f7f9fb; }
 #gImg { max-width: 98%; max-height: 98%; box-shadow: 0 1px 6px rgba(0,0,0,.12); }
 .gtabs { display: flex; gap: 2px; padding: 4px 6px 0; border-bottom: 1px solid var(--line); overflow-x: auto; flex-shrink: 0; }

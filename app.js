@@ -234,11 +234,13 @@ function requestData() { if (ready && !busy) worker.postMessage({ type: 'data', 
 function renderData(d) {
   const t = $('#dtable');
   const strCols = new Set(state.vars.filter((v) => v.type.startsWith('str')).map((v) => v.name));
+  const labCols = new Set(state.vars.filter((v) => !v.type.startsWith('str') && v.vallab).map((v) => v.name));
+  const cls = (c) => (strCols.has(c) ? 'str' : labCols.has(c) ? 'lab' : 'num');
   const editable = $('#dEdit').checked;
   let h = '<thead><tr><th></th>' + d.cols.map((c) => `<th>${esc(c)}</th>`).join('') + '</tr></thead><tbody>';
   d.rows.forEach((r, i) => {
     h += `<tr><th>${d.start + i + 1}</th>` + r.map((x, k) =>
-      `<td class="${strCols.has(d.cols[k]) ? 'str' : ''}" data-r="${d.start + i + 1}" data-c="${esc(d.cols[k])}"${editable ? ' contenteditable="true"' : ''}>${esc(x)}</td>`).join('') + '</tr>';
+      `<td class="${cls(d.cols[k])}" data-r="${d.start + i + 1}" data-c="${esc(d.cols[k])}"${editable ? ' contenteditable="true"' : ''}>${esc(x)}</td>`).join('') + '</tr>';
   });
   t.innerHTML = h + '</tbody>';
   $('#dInfo').textContent = d.N ? ` Quan sát ${d.start + 1}–${Math.min(d.N, d.start + DCOUNT)} / ${d.N.toLocaleString()} ` : ' (chưa có dữ liệu) ';
