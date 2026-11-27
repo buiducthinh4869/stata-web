@@ -102,10 +102,14 @@ async function syncMounted() {
   await new Promise((res) => py.FS.syncfs(false, () => res()));
 }
 
+let initPromise = null;
 self.onmessage = async (ev) => {
   const m = ev.data;
   try {
-    if (m.type === 'init') await init();
+    if (m.type === 'init') { initPromise = initPromise || init(); await initPromise; return; }
+    // wait until Pyodide and the engine are ready before handling uploads/runs
+    if (initPromise) await initPromise;
+    if (m.type === 'init') {}
     else if (m.type === 'run') await run(m.code, m.echo !== false);
     else if (m.type === 'upload') {
       const target = '/work/' + m.name;
