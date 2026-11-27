@@ -3,7 +3,6 @@ const $ = (s) => document.querySelector(s);
 let worker, busy = false, ready = false;
 let history = [], hpos = 0;
 let state = { vars: [], files: [], N: 0 };
-let graphs = {};
 let dataStart = 0;
 const DCOUNT = 200;
 let mountedName = null;
@@ -100,10 +99,7 @@ function onMsg(ev) {
       break;
     case 'out': append(m.style, m.text); break;
     case 'graph': {
-      const blob = new Blob([m.png], { type: 'image/png' });
-      if (graphs[m.name]) URL.revokeObjectURL(graphs[m.name]);
-      graphs[m.name] = URL.createObjectURL(blob);
-      refreshGraphs(m.name);
+      addGraph(m.name, m.png);
       append('ginfo', `(đồ thị "${m.name}" hiển thị ở thẻ Graph)\n`);
       break;
     }
@@ -271,15 +267,55 @@ $('#dRefresh').onclick = requestData;
 $('#dEdit').onchange = requestData;
 
 // ---------------------------------------------------------------- graphs
-function refreshGraphs(sel) {
-  const s = $('#gSel'); s.innerHTML = '';
-  for (const n of Object.keys(graphs)) { const o = document.createElement('option'); o.value = n; o.textContent = n; s.appendChild(o); }
-  if (sel) s.value = sel;
-  $('#gImg').src = graphs[s.value] || '';
-  $('#gcount').textContent = Object.keys(graphs).length ? `(${Object.keys(graphs).length})` : '';
+// Each graph gets its own sub-tab. As in Stata, a graph drawn with name(x) replaces the tab named x;
+// unnamed graphs (Stata name "Graph") are kept as separate tabs so students can compare them.
+const GMAX = 40;
+let gList = [], gSelId = null, gSeq = 0, gUnnamed = 0, gGridOn = false;
+function addGraph(name, png) {
+  const url = URL.createObjectURL(new Blob([png], { type: 'image/png' }));
+  const old = name !== 'Graph' && gList.find((g) => g.name === name);
+  if (old) { URL.revokeObjectURL(old.url); old.url = url; gSelId = old.id; }
+  else {
+    const g = { id: ++gSeq, name, url, label: name !== 'Graph' ? name : (++gUnnamed === 1 ? 'Graph' : `Graph #${gUnnamed}`) };
+    gList.push(g); gSelId = g.id;
+    while (gList.length > GMAX) URL.revokeObjectURL(gList.shift().url);
+  }
+  refreshGraphs();
 }
-$('#gSel').onchange = () => refreshGraphs();
-$('#gSave').onclick = () => { const n = $('#gSel').value; if (!graphs[n]) return; const a = document.createElement('a'); a.href = graphs[n]; a.download = n + '.png'; a.click(); };
+const gLabel = (g) => g.label;
+function closeGraph(id) {
+  const i = gList.findIndex((g) => g.id === id); if (i < 0) return;
+  URL.revokeObjectURL(gList[i].url); gList.splice(i, 1);
+  if (gSelId === id) gSelId = gList.length ? gList[Math.min(i, gList.length - 1)].id : null;
+  refreshGraphs();
+}
+function refreshGraphs() {
+  const tabs = $('#gTabs'); tabs.innerHTML = '';
+  for (const g of gList) {
+    const t = document.createElement('div');
+    t.className = 'gt' + (g.id === gSelId ? ' active' : ''); t.title = g.name;
+    t.innerHTML = `<span>${esc(gLabel(g))}</span><button class="x" title="Đóng">×</button>`;
+    t.onclick = (e) => { if (e.target.classList.contains('x')) return closeGraph(g.id); gSelId = g.id; gGridOn = false; refreshGraphs(); };
+    tabs.appendChild(t);
+  }
+  const w = $('#gWrap'); const cur = gList.find((g) => g.id === gSelId);
+  w.classList.toggle('grid', gGridOn); $('#gGrid').classList.toggle('on', gGridOn);
+  if (gGridOn) {
+    w.innerHTML = '';
+    for (const g of gList) {
+      const f = document.createElement('figure'); f.className = g.id === gSelId ? 'active' : '';
+      f.innerHTML = `<img src="${g.url}" alt=""><figcaption>${esc(gLabel(g))}</figcaption>`;
+      f.onclick = () => { gSelId = g.id; gGridOn = false; refreshGraphs(); };
+      w.appendChild(f);
+    }
+  } else {
+    w.innerHTML = cur ? `<img id="gImg" src="${cur.url}" alt="">` : '';
+  }
+  $('#gcount').textContent = gList.length ? `(${gList.length})` : '';
+}
+$('#gGrid').onclick = () => { gGridOn = !gGridOn; refreshGraphs(); };
+$('#gClear').onclick = () => { for (const g of gList) URL.revokeObjectURL(g.url); gList = []; gSelId = null; gUnnamed = 0; refreshGraphs(); };
+$('#gSave').onclick = () => { const g = gList.find((x) => x.id === gSelId); if (!g) return; const a = document.createElement('a'); a.href = g.url; a.download = gLabel(g).replace(/[^\w.-]+/g, '_') + '.png'; a.click(); };
 
 // ---------------------------------------------------------------- menus + command dialogs
 const V = '__vars__';

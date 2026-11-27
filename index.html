@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Stata Web — mô phỏng Stata cho suy diễn nhân quả</title>
-<link rel="stylesheet" href="style.css?v=20261126081629">
+<link rel="stylesheet" href="style.css?v=20261127122306">
 </head>
 <body>
 <nav class="menubar" id="menubar"></nav>
@@ -57,8 +57,10 @@
       <div class="tablewrap"><table id="dtable"></table></div>
     </div>
     <div class="tab" id="tab-graph">
-      <div class="edtools"><select id="gSel"></select><button id="gSave">⬇ Lưu PNG</button></div>
-      <div class="gwrap"><img id="gImg" alt=""></div>
+      <div class="edtools"><button id="gGrid" title="Hiện tất cả đồ thị cùng lúc">⊞ Xem tất cả</button><button id="gSave">⬇ Lưu PNG</button><button id="gClear" title="Đóng tất cả đồ thị">Đóng tất cả</button>
+        <span class="muted">Mỗi đồ thị mở một thẻ con; dùng <code>name(g1)</code> để ghi đè đúng thẻ đó như Stata.</span></div>
+      <div class="gtabs" id="gTabs"></div>
+      <div class="gwrap" id="gWrap"><img id="gImg" alt=""></div>
     </div>
     <div class="cmdbar">
       <span class="prompt">.</span>
@@ -93,8 +95,8 @@
   <button onclick="this.closest('dialog').close()">Đóng</button>
 </dialog>
 <div id="drop" class="drop">Thả file vào đây để tải lên thư mục làm việc</div>
-<script>window.APP_V="20261126081629";</script>
-<script src="edit.js?v=20261126081629"></script>
-<script src="app.js?v=20261126081629"></script>
+<script>window.APP_V="20261127122306";</script>
+<script src="edit.js?v=20261127122306"></script>
+<script src="app.js?v=20261127122306"></script>
 </body>
 </html>
