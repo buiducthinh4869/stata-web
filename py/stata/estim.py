@@ -1807,7 +1807,7 @@ def _wald_report(ip, est, rows, rhs, labels):
     W = float(diff @ np.linalg.pinv(RVR) @ diff)
     ip.txt('\n')
     for i, l in enumerate(labels, 1):
-        l = re.sub(r'\s*([+-=])\s*', r' \1 ', l).replace('  ', ' ')
+        l = re.sub(r'\s*([-+=])\s*', r' \1 ', l).replace('  ', ' ')
         ip.txt(f' ({i:>2})  {l.strip()}\n')
     df_r = est.get('df_r')
     if est.get('stat') == 't' and df_r is not None:

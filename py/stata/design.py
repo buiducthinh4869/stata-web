@@ -309,7 +309,8 @@ def coef_table(ip, est, stat='t', robust=None, level=95, depvar=None, beta=None,
         if beta is None:
             lo, hi = b[i] - crit * se[i], b[i] + crit * se[i]
             if eform:
-                bshow, seshow, lo, hi = math.exp(b[i]), math.exp(b[i]) * se[i], math.exp(lo), math.exp(hi)
+                bshow, seshow, lo, hi = (math.exp(min(b[i], 709.0)), math.exp(min(b[i], 709.0)) * se[i],
+                                         math.exp(min(lo, 709.0)), math.exp(min(hi, 709.0)))
             tail = f'{g_fmt(lo, 9):>13}{g_fmt(hi, 9):>12}'
         else:
             bv = beta[i] if nm != '_cons' else np.nan

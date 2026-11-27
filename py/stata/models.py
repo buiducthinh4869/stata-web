@@ -22,6 +22,10 @@ alias('mlogit', 'mlog', 'mlogi')
 
 
 # ================================================================ helpers
+def _sexp(v):
+    return math.exp(v) if v < 709.0 else float('nan')
+
+
 def _num_hess(grad, b, h=1e-5):
     k = len(b)
     H = np.zeros((k, k))
@@ -226,10 +230,12 @@ def cmd_poisson(ip, cmd, rest, by):
         ip_.txt('\n')
         if note:
             ip_.txt(f'{note:>78}\n')
-        coef_table(ip_, est, 'z', robust=rob, eform=irr,
+        coef_table(ip_, est, 'z', robust=rob, eform=irr, footer=not offname,
                    colhead=_eform_head('IRR', rob) if irr else None)
         if offname:
-            ip_.txt(f'{offname:>12} |' + ('          1  (exposure)\n' if offkind == 'exposure' else '          1  (offset)\n'))
+            ip_.txt(f'{abbrev(offname, 12):>12} |')
+            ip_.res(f'{"1":>11}')
+            ip_.txt(f'  ({offkind})\n')
             ip_.txt('-' * 78 + '\n')
         if irr and cons:
             ip_.txt('Note: _cons estimates baseline incidence rate.\n')
@@ -256,6 +262,10 @@ def cmd_poisson(ip, cmd, rest, by):
 def _nb_fun(X, y, off):
     offv = off if off is not None else 0.0
     k = X.shape[1]
+    yint = bool(np.all(y == np.round(y))) and (y.max() if y.size else 0) <= 20000
+    ymax = int(y.max()) if yint and y.size else 0
+    ks = [(j, y > j) for j in range(ymax)]
+    lgy1 = spc.gammaln(y + 1)
 
     def parts(theta):
         b, la = theta[:k], theta[k]
@@ -263,13 +273,25 @@ def _nb_fun(X, y, off):
         a = math.exp(la)
         xb = X @ b + offv
         mu = np.exp(xb)
-        m = 1 / a
-        ll = np.sum(spc.gammaln(y + m) - spc.gammaln(y + 1) - spc.gammaln(m)
-                    - m * np.log1p(a * mu) + y * (np.log(a * mu) - np.log1p(a * mu)))
+        l1 = np.log1p(a * mu)
         gx = (y - mu) / (1 + a * mu)
-        dda = (m * m * (np.log1p(a * mu) - spc.digamma(y + m) + spc.digamma(m))
-               + (y - mu) / (a * (1 + a * mu)))
-        gl = a * dda
+        if yint:
+            # gammaln(y+m)-gammaln(m) = -y*log(a) + sum_{j<y} log1p(a*j): no cancellation as alpha -> 0
+            slog = np.zeros_like(y)
+            sinv = np.zeros_like(y)
+            for j, msk in ks:
+                slog[msk] += math.log1p(a * j)
+                sinv[msk] += 1.0 / (1.0 + a * j)
+            ll = np.sum(slog - lgy1 + y * xb - (1 / a + y) * l1)
+            # d ll / d lnalpha = [log1p(a mu)/a - sum 1/(1+aj) + (y-mu)/(1+a mu)]
+            if a * max(float(mu.max()), float(y.max()) if y.size else 0.0, 1.0) < 1e-5:
+                gl = a * ((y - mu) ** 2 - y) / 2
+            else:
+                gl = l1 / a - sinv + (y - mu) / (1 + a * mu)
+        else:
+            m = 1 / a
+            ll = np.sum(spc.gammaln(y + m) - lgy1 - spc.gammaln(m) - m * l1 + y * (np.log(a * mu) - l1))
+            gl = a * (m * m * (l1 - spc.digamma(y + m) + spc.digamma(m)) + (y - mu) / (a * (1 + a * mu)))
         return float(ll), gx, gl
 
     def grad(theta):
@@ -375,13 +397,12 @@ def cmd_nbreg(ip, cmd, rest, by):
         if note:
             ip_.txt(f'{note:>78}\n')
         aux = [[('/lnalpha', lna, se_lna, False, None, None)],
-               [('alpha', alpha, alpha * se_lna, False, math.exp(lna - z * se_lna), math.exp(lna + z * se_lna))]]
+               [('alpha', alpha, alpha * se_lna, False, _sexp(lna - z * se_lna), _sexp(lna + z * se_lna))]]
         coef_table(ip_, est, 'z', robust=rob, eform=irr, aux=aux,
                    colhead=_eform_head('IRR', rob) if irr else None)
         if irr and cons:
             ip_.txt('Note: Estimates are transformed only in the first equation to incidence-rate ratios.\n')
-            ip_.txt('Note: _cons estimates baseline incidence rate (conditional on zero random effects).\n'
-                    if False else 'Note: _cons estimates baseline incidence rate.\n')
+            ip_.txt('Note: _cons estimates baseline incidence rate.\n')
         if vce == 'ols':
             ip_.txt(f'LR test of alpha=0: chibar2(01) = ')
             ip_.res(f'{chib:.2f}')
@@ -536,7 +557,7 @@ def cmd_tobit(ip, cmd, rest, by):
         if note:
             ip_.txt(f'{note:>78}\n')
         aux = [[(f'var(e.{yv})', sig2, 2 * sig2 * se_ls, False,
-                 math.exp(2 * (ls - zc * se_ls)), math.exp(2 * (ls + zc * se_ls)))]]
+                 _sexp(2 * (ls - zc * se_ls)), _sexp(2 * (ls + zc * se_ls)))]]
         coef_table(ip_, est, 'z', robust=rob, aux=aux)
 
     def predict(ip_, kind, m_):
@@ -685,6 +706,7 @@ def cmd_ologit(ip, cmd, rest, by):
         return xb, out
 
     def predict_multi(ip_, pp, typ, tk):
+        tk = _stub(tk, J)
         kinds = pp.opts.names()
         kind = 'pr' if not kinds or kinds == ['outcome'] else kinds[0]
         xb, P = probs(ip_)
@@ -710,6 +732,13 @@ def cmd_ologit(ip, cmd, rest, by):
     _store_rhs(est, toks[1:], cols, d)
     ip.set_estimation(est)
     replay(ip, True)
+
+
+def _stub(tk, J):
+    """predict stub*, pr -> stub1 ... stubJ"""
+    if len(tk) == 1 and tk[0].endswith('*'):
+        return [f'{tk[0][:-1]}{j + 1}' for j in range(J)]
+    return tk
 
 
 def _outcome_index(oc, cats, labs):
@@ -867,6 +896,7 @@ def cmd_mlogit(ip, cmd, rest, by):
             ip_.txt('Note: _cons estimates baseline relative risk for each outcome.\n')
 
     def predict_multi(ip_, pp, typ, tk):
+        tk = _stub(tk, J)
         kinds = pp.opts.names()
         kind = 'pr' if not kinds or kinds == ['outcome'] else kinds[0]
         dd = ip_.data
@@ -974,11 +1004,14 @@ def cmd_ppmlhdfe(ip, cmd, rest, by):
     k_all = Xall.shape[1]
     Xs = Xall[:, :k_all - 1] if fe_ids else Xall
 
+    subit = [0]
+
     def demean(Z, wt):
         if not fe_ids:
             return Z.copy()
         Z = Z.copy()
         for _ in range(10000):
+            subit[0] += 1
             old = Z.copy()
             for g in fe_ids:
                 sw = np.bincount(g, weights=wt)
@@ -1076,7 +1109,10 @@ def cmd_ppmlhdfe(ip, cmd, rest, by):
                     ip_.res(f'{dv_:.4e}')
                     ip_.txt('  eps = ')
                     ip_.res(f'{ep:.4e}\n')
-                ip_.res(f'Converged in {len(it_log)} iterations\n')
+                msg = f'Converged in {len(it_log)} iterations'
+                if fe_vars:
+                    msg += f' and {subit[0]} HDFE sub-iterations'
+                ip_.res(msg + ' (tol = 1.0e-08)\n')
         nabs = len(fe_vars)
         left = ['HDFE PPML regression',
                 f'Absorbing {nabs} HDFE group{"s" if nabs != 1 else ""}' if nabs else '',
@@ -1087,6 +1123,12 @@ def cmd_ppmlhdfe(ip, cmd, rest, by):
                  (f'Wald chi2({kk})', f'{stat:.2f}'), ('Prob > chi2', f'{pv:.4f}'), ('Pseudo R2', f'{r2p:.4f}')]
         if G:
             right[1] = (f'No. of clusters', comma_int(G))
+        if not nabs:
+            del left[1]
+            if right[1] is None:
+                del right[1]
+            else:
+                left.insert(1, '')
         ip_.txt('\n')
         right_lines(ip_, left, right)
         ip_.txt('\n')
@@ -1100,18 +1142,23 @@ def cmd_ppmlhdfe(ip, cmd, rest, by):
             ip_.txt(' Absorbed FE | Categories  - Redundant  = Num. Coefs |\n')
             ip_.txt('-------------+---------------------------------------|\n')
             first = True
+            marks = []
+            gid_c = cluster_ids(d, clv, mask)[0] if G else None
             for v, g in zip(fe_vars, fe_ids):
                 L = int(g.max()) + 1
-                nested = False
-                if G:
-                    gid, _ = cluster_ids(d, clv, mask)
-                    nested = len(np.unique(np.column_stack([g, gid]), axis=0)) == L
+                nested = gid_c is not None and len(np.unique(np.column_stack([g, gid_c]), axis=0)) == L
                 red = L if nested else (0 if first else 1)
+                mk = '*' if nested else ('?' if not first else ' ')
                 first = False
-                ip_.txt(f'{abbrev(v, 12):>12} |')
-                ip_.res(f'{L:>11}{red:>12}{L - red:>14}')
-                ip_.txt('*|\n' if nested else ' |\n')
+                marks.append(mk)
+                ip_.txt(f'{abbrev(v):>12} |')
+                ip_.res(f'{L:>11}{red:>13}{L - red:>13}')
+                ip_.txt(f' {mk}|\n')
             ip_.txt('-----------------------------------------------------+\n')
+            if '?' in marks:
+                ip_.txt('? = number of redundant parameters may be higher\n')
+            if '*' in marks:
+                ip_.txt('* = FE nested within cluster; treated as redundant for DoF computation\n')
 
     def predict(ip_, kind, m_):
         if kind == 'xb' or kind in (None, '', 'mu'):
