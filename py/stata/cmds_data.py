@@ -920,6 +920,12 @@ def cmd_export2(ip, cmd, rest, by):
     else:
         kind, vlist = (body[0] if body else ''), body[1:]
     d = ip.data
+    if p.using is None:
+        # export excel/delimited filename (without using): exports all variables
+        fn = p.body.split(None, 1)[1].strip() if cmd != 'outsheet' and len(p.body.split(None, 1)) > 1 else ''
+        if not fn:
+            raise StataError('using required', 100)
+        p.using, vlist = unquote(fn), []
     vars_ = d.expand_varlist(vlist) if vlist else list(d.vars)
     m = ip.mark(p)
     path = ip.path(p.using)
@@ -1142,7 +1148,7 @@ def cmd_collapse(ip, cmd, rest, by):
         w = np.asarray(E.eval_expr(p.weight[1], E.Ctx(ip, d)), dtype=float) * np.ones(d.n)
     specs = []
     stat = 'mean'
-    for tok in split_top(p.body):
+    for tok in split_top(re.sub(r'\s*=\s*', '=', p.body)):
         m = re.match(r'^\((\w+)\)$', tok)
         if m:
             stat = m.group(1)

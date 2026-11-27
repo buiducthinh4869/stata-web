@@ -69,7 +69,9 @@ let xlsxLoaded = false;
 async function ensurePackages(code) {
   if (!xlsxLoaded && /\b(import|export)\s+excel\b/.test(code)) {
     post('status', { text: 'Đang tải openpyxl cho Excel…' });
-    await py.loadPackage(['openpyxl']);
+    // openpyxl is not in the Pyodide distribution: install the pure-Python wheel from PyPI
+    await py.loadPackage(['micropip']);
+    await py.pyimport('micropip').install(['et_xmlfile', 'openpyxl']);
     xlsxLoaded = true;
   }
   if (!sympyLoaded && /rddensity/.test(code)) {
