@@ -268,6 +268,47 @@ def cmd_egen(ip, cmd, rest, by):
         for k in range(len(at) - 1):
             sel = (x >= at[k]) & (x < at[k + 1])
             res[sel] = at[k]
+    elif fn_l in ('rowfirst', 'rowlast', 'rowmedian'):
+        vars_ = d.expand_varlist(arg.split())
+        M = np.column_stack([d.cols[v].astype(float) for v in vars_])
+        res = np.full(n, np.nan)
+        for i in range(n):
+            r = M[i][~np.isnan(M[i])]
+            if r.size:
+                res[i] = r[0] if fn_l == 'rowfirst' else (r[-1] if fn_l == 'rowlast' else _stata_pctile(r, 50))
+        res[~mask] = np.nan
+    elif fn_l in ('anymatch', 'anycount'):
+        vars_ = d.expand_varlist(arg.split())
+        vals = parse_numlist(p.opts.get('values', 1) or '')
+        if not vals:
+            raise StataError('option values() required', 198)
+        M = np.column_stack([d.cols[v].astype(float) for v in vars_])
+        hit = np.isin(M, np.array(vals, dtype=float))
+        res = (hit.any(axis=1) if fn_l == 'anymatch' else hit.sum(axis=1)).astype(float)
+        res[~mask] = np.nan
+        typ = typ or ('byte' if fn_l == 'anymatch' else None)
+    elif fn_l == 'concat':
+        vars_ = d.expand_varlist(arg.split())
+        pun = p.opts.get('punct', 2) or ''
+        pun = unquote(pun) if pun else ''
+        out = []
+        for i in range(n):
+            if not mask[i]:
+                out.append('')
+                continue
+            parts = []
+            for v in vars_:
+                x = d.cols[v][i]
+                if d.isstr(v):
+                    parts.append(str(x))
+                elif p.opts.has('decode', 3) and d.vallab.get(v) and not np.isnan(x):
+                    parts.append(d.labels.get(d.vallab[v], {}).get(float(x), g_fmt(x)))
+                else:
+                    parts.append('.' if np.isnan(x) else g_fmt(x))
+            out.append(pun.join(parts))
+        w = max([len(s) for s in out] + [1])
+        d.add_var(name, np.array(out, dtype=object), f'str{w}')
+        return
     else:
         raise StataError(f'unknown egen function {fn}()', 133)
     d.add_var(name, res, typ or 'float')
@@ -1466,7 +1507,7 @@ def cmd_svmat(ip, cmd, rest, by):
         d.add_var(nm, vals, 'float')
 
 
-@command('fillin', 'isid')
+@command('isid')
 def cmd_isid(ip, cmd, rest, by):
     d = ip.data
     vars_ = d.expand_varlist(rest.split(',')[0].split())

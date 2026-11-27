@@ -207,8 +207,14 @@ def _split_name(name, w=12):
 
 
 def coef_table(ip, est, stat='t', robust=None, level=95, depvar=None, beta=None, show_base=False,
-               extra_rows=None, eq_title=None, colhead=None, width=78):
-    """Print a standard Stata coefficient table."""
+               extra_rows=None, eq_title=None, colhead=None, width=78, eform=False, aux=None,
+               header=True, footer=True):
+    """Print a standard Stata coefficient table.
+
+    eform: show exp(b) (IRR/RRR/odds ratio); z and P stay those of b.
+    aux: list of groups, each a list of (label, b, se, show_z, lo, hi) printed after a separator
+         (ancillary parameters such as /cut1, /lnalpha, var(e.y)); lo/hi None -> b -/+ crit*se.
+    header/footer: print the column header / the closing rule (for multi-equation tables)."""
     names = est['names']
     b = np.asarray(est['b'], float)
     V = np.asarray(est['V'], float)
@@ -223,17 +229,18 @@ def coef_table(ip, est, stat='t', robust=None, level=95, depvar=None, beta=None,
         crit = sps.norm.ppf(1 - alpha)
     hdr2 = 'Coefficient  Std. err.' if not robust else 'Coefficient  std. err.'
     statlab = '      t    P>|t|' if stat == 't' else '      z    P>|z|'
-    ip.txt('-' * 78 + '\n')
-    if robust:
-        ip.txt(f'{"":>12} |{robust:>21}\n' if len(robust) < 12 else f'{"":>12} | {robust}\n')
-    dv = _split_name(depvar)
-    if len(dv) > 1:
-        ip.txt(f'{dv[0]:>12} |\n')
-    tail = '     [95% conf. interval]' if beta is None else '                  Beta'
-    if level != 95 and beta is None:
-        tail = f'     [{level}% conf. interval]'
-    lab = colhead or hdr2
-    ip.txt(f'{dv[-1]:>12} | {lab}{statlab}{tail}\n')
+    if header:
+        ip.txt('-' * 78 + '\n')
+        if robust:
+            ip.txt(f'{"":>12} |{robust:>21}\n' if len(robust) < 12 else f'{"":>12} | {robust}\n')
+        dv = _split_name(depvar)
+        if len(dv) > 1:
+            ip.txt(f'{dv[0]:>12} |\n')
+        tail = '     [95% conf. interval]' if beta is None else '                  Beta'
+        if level != 95 and beta is None:
+            tail = f'     [{level}% conf. interval]'
+        lab = colhead or hdr2
+        ip.txt(f'{dv[-1]:>12} | {lab}{statlab}{tail}\n')
     ip.txt('-' * 13 + '+' + '-' * 64 + '\n')
     if eq_title:
         ip.res(f'{eq_title:<12}')
@@ -245,6 +252,8 @@ def coef_table(ip, est, stat='t', robust=None, level=95, depvar=None, beta=None,
     for i in order:
         ci = info[i] if info else None
         if ci is not None and ci.base and not show_base:
+            continue
+        if ci is not None and ci.kind == 'aux':
             continue
         nm = names[i]
         if ci is not None and ci.kind == 'factor' and not ci.compact:
@@ -296,20 +305,38 @@ def coef_table(ip, est, stat='t', robust=None, level=95, depvar=None, beta=None,
         if not np.isnan(t) and abs(t) >= 1e5:
             tstr = f'{g_fmt(t, 8):>9}'
         pstr = f'{p:8.3f}' if not np.isnan(p) else f'{".":>8}'
+        bshow, seshow = b[i], se[i]
         if beta is None:
             lo, hi = b[i] - crit * se[i], b[i] + crit * se[i]
+            if eform:
+                bshow, seshow, lo, hi = math.exp(b[i]), math.exp(b[i]) * se[i], math.exp(lo), math.exp(hi)
             tail = f'{g_fmt(lo, 9):>13}{g_fmt(hi, 9):>12}'
         else:
             bv = beta[i] if nm != '_cons' else np.nan
             tail = f'{g_fmt(bv, 9) if not np.isnan(bv) else ".":>25}' if nm != '_cons' else ''
-        ip.res(f'{g_fmt(b[i], 9):>11}{g_fmt(se[i], 9):>11}{tstr}{pstr}{tail}\n')
+        ip.res(f'{g_fmt(bshow, 9):>11}{g_fmt(seshow, 9):>11}{tstr}{pstr}{tail}\n')
+    for grp in (aux or []):
+        ip.txt('-' * 13 + '+' + '-' * 64 + '\n')
+        for lab_, bb, ss, showz, lo, hi in grp:
+            if lo is None:
+                lo, hi = bb - crit * ss, bb + crit * ss
+            ip.txt(f'{abbrev(lab_, 12):>12} |')
+            zp = ''
+            if showz:
+                z = bb / ss if ss > 0 else np.nan
+                pz = 2 * sps.norm.sf(abs(z)) if not np.isnan(z) else np.nan
+                zp = (f'{z:9.2f}' if not np.isnan(z) else f'{".":>9}') + (f'{pz:8.3f}' if not np.isnan(pz) else f'{".":>8}')
+            else:
+                zp = ' ' * 17
+            ip.res(f'{g_fmt(bb, 9):>11}{g_fmt(ss, 9):>11}{zp}{g_fmt(lo, 9):>13}{g_fmt(hi, 9):>12}\n')
     if extra_rows:
         ip.txt('-' * 13 + '+' + '-' * 64 + '\n')
         for nm, val, note in extra_rows:
             ip.txt(f'{nm:>12} |')
             ip.res(f'{g_fmt(val, 9):>11}')
             ip.txt((f'   {note}' if note else '') + '\n')
-    ip.txt('-' * 78 + '\n')
+    if footer:
+        ip.txt('-' * 78 + '\n')
 
 
 def header_line(ip, left, key, val, valfmt=None, left_style='txt'):

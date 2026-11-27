@@ -506,6 +506,13 @@ class Interp:
             m = a[0] if a else 0.0
             s = a[1] if len(a) > 1 else 1.0
             r = g.logistic(m, s, size)
+        elif f == 'rgamma':
+            r = g.gamma(a[0], a[1] if len(a) > 1 else 1.0, size)
+        elif f == 'rbeta':
+            r = g.beta(a[0], a[1], size)
+        elif f == 'rnbinomial':
+            # Stata: number of failures before the n-th success, success probability p
+            r = g.negative_binomial(a[0], np.clip(np.asarray(a[1], dtype=float), 1e-12, 1), size).astype(float)
         else:
             raise StataError(f'unknown function {f}()', 133)
         if size is None:
@@ -1091,4 +1098,4 @@ def canon_coef(name):
 
 
 def load_commands():
-    from . import cmds_core, cmds_data, cmds_stats, estim, causal, causal2, tables, graphs, cmds_more  # noqa: F401
+    from . import cmds_core, cmds_data, cmds_stats, estim, causal, causal2, tables, graphs, cmds_more, cmds_ext, models  # noqa: F401

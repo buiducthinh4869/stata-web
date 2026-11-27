@@ -461,6 +461,8 @@ def cmd_predict(ip, cmd, rest, by):
     typ = None
     if toks and toks[0] in ('double', 'float'):
         typ = toks.pop(0)
+    if ip.est.get('predict_multi'):
+        return ip.est['predict_multi'](ip, p, typ, toks)
     name = toks[0]
     kinds = [n for n in p.opts.names()]
     kind = kinds[0] if kinds else None
@@ -2077,7 +2079,7 @@ def cmd_vif(ip, cmd, rest, by):
 @command('margins')
 def cmd_margins(ip, cmd, rest, by):
     est = ip.est
-    if est is None or est.get('rhs_tokens') is None:
+    if est is None or est.get('rhs_tokens') is None or est.get('nomargins'):
         raise StataError('margins not available after this command', 321)
     p = parse_command(rest)
     d = ip.data

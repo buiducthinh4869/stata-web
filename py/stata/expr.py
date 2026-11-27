@@ -662,7 +662,7 @@ def _eval_call(node, ctx):
     F = FUNCS.get(f)
     if F is not None:
         return F(ctx, args)
-    if f in ('runiform', 'uniform', 'rnormal', 'rbinomial', 'rchi2', 'rpoisson', 'runiformint', 'rexponential', 'rt', 'rlogistic'):
+    if f in ('runiform', 'uniform', 'rnormal', 'rbinomial', 'rchi2', 'rpoisson', 'runiformint', 'rexponential', 'rt', 'rlogistic', 'rgamma', 'rbeta', 'rnbinomial'):
         return ip.rand(f, args, n)
     if f == 'missing' or f == 'mi':
         return _missing(ctx, args)

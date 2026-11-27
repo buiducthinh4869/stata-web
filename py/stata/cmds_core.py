@@ -904,10 +904,11 @@ def cmd_type(ip, cmd, rest, by):
 
 HELP = {
     'Dữ liệu': 'use, save, import excel/delimited, export excel/delimited, webuse, merge, append, collapse, reshape*, describe, codebook, list, browse, count, misstable, xtset, tsset',
-    'Biến': 'generate, replace, egen, drop, keep, rename, order, sort, gsort, label, recode, encode, destring, tostring, format, duplicates, expand',
+    'Biến': 'generate, replace, egen, drop, keep, rename, order, sort, gsort, label, recode, encode, decode, destring, tostring, split, format, duplicates, expand, fillin, contract, tsfill, winsor2, egen concat/rowfirst/rowlast/rowmedian/anymatch/anycount',
     'Mô tả': 'summarize [, detail], tabulate [, row col chi2], tabstat, ttest, mean, correlate, pwcorr, xtsum, xtdescribe',
     'Đồ thị': 'histogram, kdensity, scatter, twoway (scatter/line/connected/lfit/qfit/lfitci/rcap/rarea/bar/function), graph box/bar/matrix/combine/export, coefplot, marginsplot, rvfplot, pnorm, qnorm',
     'Hồi quy': 'regress, predict, xtreg fe/re/be, reghdfe, areg, logit, probit, test, testparm, lincom, margins, hausman, estat hettest/ovtest/vif/ic',
+    'Biến rời rạc': 'poisson [, irr exposure() offset()], nbreg, ppmlhdfe (gravity, absorb()), tobit [, ll() ul()], ologit, oprobit, mlogit [, baseoutcome() rrr]',
     'IV': 'ivregress 2sls, ivreg2, estat firststage/endogenous/overid, weakivtest',
     'RDD': 'rdrobust, rdbwselect, rdplot, rddensity',
     'PSM': 'psmatch2, pstest, psgraph, teffects psmatch, kmatch',

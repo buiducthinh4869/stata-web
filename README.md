@@ -1,6 +1,7 @@
 # Stata Web
 
 Mô phỏng Stata chạy hoàn toàn trong trình duyệt (Python/Pyodide), phục vụ giảng dạy các phương pháp suy diễn nhân quả: RCT, IV, DID (TWFE, didregress, csdid, sdid), PSM (psmatch2, teffects, kmatch), RDD (rdrobust, rdplot, rddensity), SCM (synth2).
+Ngoài ra có các mô hình phi tuyến poisson, nbreg, ppmlhdfe, tobit, ologit/oprobit, mlogit và các lệnh dữ liệu decode, split, tsfill, fillin, contract, winsor2.
 
 **Dùng ngay:** https://buiducthinh4869.github.io/stata-web/
 
@@ -9,10 +10,11 @@ Mô phỏng Stata chạy hoàn toàn trong trình duyệt (Python/Pyodide), ph�
 - Dữ liệu không rời khỏi máy người dùng.
 
 ## Giới hạn
-- Hỗ trợ khoảng 110 lệnh có trong bộ do-file mẫu (thư mục `examples/do`), không phải toàn bộ Stata.
+- Hỗ trợ khoảng 210 lệnh có trong bộ do-file mẫu (thư mục `examples/do`), không phải toàn bộ Stata.
 - Bộ sinh số ngẫu nhiên khác Stata: dữ liệu mô phỏng bằng `rnormal`/`runiform` cho kết quả gần nhưng không trùng từng chữ số.
 - `teffects psmatch`: sai số chuẩn theo Abadie–Imbens (2006), chưa hiệu chỉnh cho propensity score ước lượng (AI 2016).
 - `kmatch`: băng thông theo quy tắc pair-matching, sai số chuẩn coi trọng số là cố định.
+- `ppmlhdfe`: chưa hỗ trợ `d()`/`predict`; `margins` chưa hỗ trợ sau poisson, nbreg, tobit, ologit, mlogit.
 - `synth2`: tối ưu hóa V bằng Nelder–Mead; trọng số có thể lệch nhẹ so với Stata.
 
 ## Phát triển
