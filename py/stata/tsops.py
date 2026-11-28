@@ -66,6 +66,11 @@ def expand_token(tok):
     if not pre:
         return [tok]
     out = []
+    if t.startswith('(') and t.endswith(')'):
+        for v in t[1:-1].split():
+            for chain in _split_groups(pre):
+                out.append(canonical(chain, v))
+        return out
     for chain in _split_groups(pre):
         out.append(canonical(chain, t))
     return out
