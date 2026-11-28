@@ -1106,4 +1106,4 @@ def canon_coef(name):
 
 
 def load_commands():
-    from . import cmds_core, cmds_data, cmds_stats, estim, causal, causal2, tables, graphs, cmds_more, cmds_ext, models  # noqa: F401
+    from . import cmds_core, cmds_data, cmds_stats, estim, causal, causal2, tables, graphs, cmds_more, cmds_ext, models, tsuni  # noqa: F401
