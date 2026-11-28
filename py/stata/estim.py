@@ -1936,6 +1936,9 @@ def cmd_hausman(ip, cmd, rest, by):
 
 
 # ================================================================ estat
+ESTAT_EXT = []   # (min abbreviation, full name, fn(ip, p)) registered by other modules
+
+
 @command('estat')
 def cmd_estat(ip, cmd, rest, by):
     est = ip.est
@@ -1973,7 +1976,14 @@ def cmd_estat(ip, cmd, rest, by):
         return _estat_summarize(ip, est)
     hook = est.get('estat')
     if hook:
-        return hook(ip, sub, p)
+        try:
+            return hook(ip, sub, p)
+        except StataError as e:
+            if e.rc != 321:
+                raise
+    for ab, full, fn in ESTAT_EXT:
+        if len(sub) >= len(ab) and full.startswith(sub):
+            return fn(ip, p)
     raise StataError(f'estat {sub} not valid after {c}', 321)
 
 
