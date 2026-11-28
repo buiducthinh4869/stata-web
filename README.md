@@ -4,7 +4,7 @@ Mô phỏng Stata chạy hoàn toàn trong trình duyệt (Python/Pyodide), ph�
 Ngoài ra có các mô hình phi tuyến poisson, nbreg, ppmlhdfe, tobit, ologit/oprobit, mlogit và các lệnh dữ liệu decode, split, tsfill, fillin, contract, winsor2.
 
 **Chuỗi thời gian:** dfuller, pperron, kpss, zandrews, arima, arch/garch/egarch/tarch, var, svar, irf, vecrank, vec, ardl (bounds test PSS/Kripfganz–Schneider).
-**Dữ liệu bảng nâng cao:** xtabond2, xtabond, xtdpdsys (GMM, Hansen/Sargan, AR(1)/AR(2), Windmeijer), xtunitroot (llc, ips, ht, breitung, fisher, hadri), xtgls, xtpcse, xtscc, xttest0, xttest3, xtserial, xtcsd.
+**Dữ liệu bảng nâng cao:** xtabond2, xtabond, xtdpdsys (GMM, Hansen/Sargan, AR(1)/AR(2), Windmeijer), xtunitroot (llc, ips, ht, breitung, fisher, hadri), xtcointtest kao, xtlogit/xtprobit/xtpoisson/xtnbreg (fe/re), xtivreg (fe/fd/be/re), xthtaylor, xtmg, xtpmg, xthreg, xtqreg, qregpd, xtgls, xtpcse, xtscc, xttest0, xttest3, xtserial, xtcsd.
 
 **Dùng ngay:** https://buiducthinh4869.github.io/stata-web/
 
@@ -21,7 +21,8 @@ Ngoài ra có các mô hình phi tuyến poisson, nbreg, ppmlhdfe, tobit, ologit
 - `synth2`: tối ưu hóa V bằng Nelder–Mead; trọng số có thể lệch nhẹ so với Stata.
 
 - `xtabond2` với difference GMM in ra Wald chi2 đúng thay vì `chi2(0) = .` như bản gốc; `xtdpdsys` one-step không robust có thể lệch nhẹ sai số chuẩn so với `xtdpd`.
-- `xtunitroot breitung, robust` chưa hỗ trợ; `xtcointtest` chưa có.
+- `xtunitroot breitung, robust` chưa hỗ trợ; `xtcointtest` mới có `kao` (pedroni/westerlund của Stata nằm trong thư viện Mata biên dịch).
+- `xthreg`: thuật toán theo Hansen (1999) (bản gốc là thư viện Mata biên dịch) nên lưới ngưỡng/bootstrap có thể lệch nhẹ; `qregpd` chưa có `optimize(mcmc)`; `xtmg, robust` chưa hỗ trợ; RE logit/probit dùng Gauss–Hermite thích nghi 12 điểm.
 
 ## Phát triển
 - Engine: `py/stata/` (thông dịch do-file, quản lý dữ liệu, ước lượng, đồ thị). `py/rdpkg/`: phần tính toán của gói rdrobust/rddensity (GPL-3.0, Calonico, Cattaneo, Farrell, Titiunik; Cattaneo, Jansson, Ma).

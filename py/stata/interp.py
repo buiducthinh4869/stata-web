@@ -1111,4 +1111,4 @@ def canon_coef(name):
 
 
 def load_commands():
-    from . import cmds_core, cmds_data, cmds_stats, estim, causal, causal2, tables, graphs, cmds_more, cmds_ext, models, tsuni, tsreg, tsarima, tsarch, tsvar, tsirf, tssvar, tsvec, tsardl, xtdiag, xtgls, xtab2, xtdpdoff, xtunit, xtnl, xtiv, xtht, xtmg, xthreg, xtqr, qrpd  # noqa: F401
+    from . import cmds_core, cmds_data, cmds_stats, estim, causal, causal2, tables, graphs, cmds_more, cmds_ext, models, tsuni, tsreg, tsarima, tsarch, tsvar, tsirf, tssvar, tsvec, tsardl, xtdiag, xtgls, xtab2, xtdpdoff, xtunit, xtnl, xtiv, xtht, xtmg, xthreg, xtqr, qrpd, xtcoint  # noqa: F401
