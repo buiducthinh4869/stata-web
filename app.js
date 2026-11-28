@@ -95,6 +95,7 @@ function onMsg(ev) {
       $('#exSel').length = 1;
       for (const f of m.examples) { const o = document.createElement('option'); o.value = f; o.textContent = f; $('#exSel').appendChild(o); }
       append('txt', '  ___  ____  ____  ____  ____ (R)\n /__    /   ____/   /   ____/   Stata Web — mô phỏng Stata trong trình duyệt\n___/   /   /___/   /   /___/    cho giảng dạy suy diễn nhân quả\n\n');
+      append('err', 'LƯU Ý: Đây chỉ là web mô phỏng Stata, không thay thế được Stata. Mọi kết quả chỉ mang tính tham khảo;\nweb không chịu trách nhiệm nếu người dùng đưa kết quả vào nghiên cứu của mình. Hãy kiểm tra lại bằng Stata thật.\n\n');
       append('txt', 'Gõ lệnh vào ô Command, dùng menu phía trên, hoặc mở một do-file mẫu. Gõ  help  để xem danh sách lệnh.\n\n');
       break;
     case 'out': append(m.style, m.text); break;

@@ -12,6 +12,10 @@ Ngoài ra có các mô hình phi tuyến poisson, nbreg, ppmlhdfe, tobit, ologit
 - Trình duyệt khác: kéo thả file lên, tải kết quả về (từng file hoặc .zip).
 - Dữ liệu không rời khỏi máy người dùng.
 
+## Lưu ý quan trọng
+
+Lưu ý: Stata Web chỉ là công cụ mô phỏng Stata phục vụ học tập, không thay thế được phần mềm Stata. Mọi kết quả chỉ mang tính tham khảo; người dùng tự chịu trách nhiệm kiểm tra lại bằng Stata trước khi đưa vào nghiên cứu, luận văn hay công bố. Stata Web không chịu trách nhiệm về việc sử dụng kết quả.
+
 ## Giới hạn
 - Hỗ trợ khoảng 210 lệnh có trong bộ do-file mẫu (thư mục `examples/do`), không phải toàn bộ Stata.
 - Bộ sinh số ngẫu nhiên khác Stata: dữ liệu mô phỏng bằng `rnormal`/`runiform` cho kết quả gần nhưng không trùng từng chữ số.
