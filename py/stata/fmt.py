@@ -73,6 +73,9 @@ def _commas(intpart):
 
 def fmt_num(x, fmt):
     """Apply a Stata %fmt to a number; returns string padded to width."""
+    from .dates import is_tfmt, fmt_t
+    if is_tfmt(fmt) and not isinstance(x, str):
+        return fmt_t(x, fmt)
     m = _FMT_RE.match(fmt.strip())
     if not m:
         return g_fmt(x)

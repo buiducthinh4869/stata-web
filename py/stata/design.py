@@ -12,12 +12,14 @@ from .syntax import parse_terms, split_top
 
 
 class Col:
-    __slots__ = ('name', 'values', 'base', 'omitted', 'term', 'group', 'level', 'kind', 'vars', 'compact')
+    __slots__ = ('name', 'values', 'base', 'omitted', 'term', 'group', 'level', 'kind', 'vars', 'compact', 'tsvar', 'tschain')
 
     def __init__(self, **kw):
         self.base = False
         self.omitted = False
         self.compact = False
+        self.tsvar = None
+        self.tschain = ''
         for k, v in kw.items():
             setattr(self, k, v)
 
@@ -25,8 +27,8 @@ class Col:
 def _comp_values(ip, d, comp, override=None):
     var = d.resolve(comp.var)
     if comp.tsop:
-        op, k = comp.tsop
-        return ip.ts_op(E.Ctx(ip, d), op, k, var), var
+        from .tsops import apply as _ts_apply
+        return _ts_apply(ip, d, comp.tsop, var), var
     if override and var in override:
         return np.asarray(override[var], dtype=float), var
     if d.isstr(var):
@@ -74,7 +76,7 @@ def build_design(ip, d, tokens, mask, override=None, levels_from=None, base_over
             var = d.resolve(c.var)
             vals = compvals[(c.kind, var, c.tsop)]
             if c.kind == 'c':
-                nm = var if not c.tsop else f'{c.tsop[0]}{"" if c.tsop[1] == 1 else c.tsop[1]}.{var}'
+                nm = var if not c.tsop else f'{c.tsop}.{var}'
                 parts.append([('', vals, False, ('c.' + nm) if len(t) > 1 else nm, None)])
             else:
                 if levels_from and var in levels_from:
@@ -146,8 +148,12 @@ def build_design(ip, d, tokens, mask, override=None, levels_from=None, base_over
                 kind = 'cont' if len(t) == 1 else 'cinter'
                 if len(t) > 1:
                     group = '#'.join('c.' + d.resolve(c.var) for c in t)
-            cols.append(Col(name=name, values=v, base=isbase, term=ti, group=group, level=lab,
-                            kind=kind, vars=factor_vars))
+            col = Col(name=name, values=v, base=isbase, term=ti, group=group, level=lab,
+                      kind=kind, vars=factor_vars)
+            if len(t) == 1 and t[0].kind == 'c':
+                col.tsvar = d.resolve(t[0].var)
+                col.tschain = t[0].tsop or ''
+            cols.append(col)
     # compact display for single-factor terms with 1 non-base level and no value label
     byterm = {}
     for c in cols:
@@ -249,6 +255,24 @@ def coef_table(ip, est, stat='t', robust=None, level=95, depvar=None, beta=None,
     idx = list(range(len(names)))
     # _cons last
     order = [i for i in idx if names[i] != '_cons'] + [i for i in idx if names[i] == '_cons']
+    # time-series groups: consecutive columns on the same variable where any carries an operator
+    tsgrp = {}
+    run = []
+
+    def _flush():
+        if run and any(getattr(info[j], 'tschain', '') for j in run):
+            for j in run:
+                tsgrp[j] = (info[run[0]].tsvar, run[0])
+    for i in order:
+        ci = info[i] if info else None
+        tv = getattr(ci, 'tsvar', None) if ci is not None and ci.kind == 'cont' else None
+        if tv is not None and run and info[run[-1]].tsvar == tv:
+            run.append(i)
+        else:
+            _flush()
+            run = [i] if tv is not None else []
+    _flush()
+    printed = False
     for i in order:
         ci = info[i] if info else None
         if ci is not None and ci.base and not show_base:
@@ -256,9 +280,19 @@ def coef_table(ip, est, stat='t', robust=None, level=95, depvar=None, beta=None,
         if ci is not None and ci.kind == 'aux':
             continue
         nm = names[i]
-        if ci is not None and ci.kind == 'factor' and not ci.compact:
+        if i in tsgrp:
+            gvar, gstart = tsgrp[i]
+            if lastgroup != ('ts', gstart):
+                if printed:
+                    ip.txt(f'{"":>12} |\n')
+                ip.txt(f'{abbrev(gvar, 12):>12} |\n')
+                lastgroup = ('ts', gstart)
+            from .tsops import display_label
+            rowname = f'{display_label(ci.tschain):>12}'
+        elif ci is not None and ci.kind == 'factor' and not ci.compact:
             if ci.group != lastgroup:
-                ip.txt(f'{"":>12} |\n')
+                if isinstance(lastgroup, tuple) or lastgroup is None or True:
+                    ip.txt(f'{"":>12} |\n')
                 gl = _split_name(ci.group)
                 for g in gl[:-1]:
                     ip.txt(f'{g:>12} |\n')
@@ -283,10 +317,11 @@ def coef_table(ip, est, stat='t', robust=None, level=95, depvar=None, beta=None,
             else:
                 if lastgroup is not None and nm != '_cons':
                     pass
-                if lastgroup is not None and nm == '_cons':
+                if lastgroup is not None and (nm == '_cons' or isinstance(lastgroup, tuple)):
                     ip.txt(f'{"":>12} |\n')
                 rowname = abbrev(nm.replace('o.', ''), 12)
                 lastgroup = None
+        printed = True
         ip.txt(f'{rowname:>12} |')
         if ci is not None and ci.base:
             ip.res(f'{"0":>11}')

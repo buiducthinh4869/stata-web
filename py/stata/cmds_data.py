@@ -1455,15 +1455,41 @@ def cmd_xtset(ip, cmd, rest, by):
     if p.body.strip() == 'clear':
         d.ts = None
         return
+    noargs = not p.body.split()
     toks = d.expand_varlist(toks)
-    if cmd == 'xtset' or len(toks) == 2:
+    if noargs:
+        if cmd == 'xtset' and not d.ts.get('panel'):
+            raise StataError('panel variable not set; use xtset varname ...', 459)
+        panel, time = d.ts.get('panel'), d.ts.get('time')
+    elif cmd == 'xtset' or len(toks) == 2:
         panel = toks[0]
         time = toks[1] if len(toks) > 1 else None
     else:
         panel, time = None, toks[0]
-    d.ts = {'panel': panel, 'time': time, 'delta': float(p.opts.get('delta') or 1)}
+    unitfmt = {'daily': '%td', 'weekly': '%tw', 'monthly': '%tm', 'quarterly': '%tq', 'halfyearly': '%th',
+               'yearly': '%ty', 'generic': '%9.0g'}
+    for u, f in unitfmt.items():
+        if time and p.opts.has(u):
+            d.formats[time] = f
+    if time and (d.isstr(time)):
+        raise StataError(f'time variable {time} must be numeric', 109)
+    d.ts = {'panel': panel, 'time': time,
+            'delta': float(p.opts.get('delta') or ((d.ts or {}).get('delta', 1) if noargs else 1))}
     keys = ([panel] if panel else []) + ([time] if time else [])
     d.sort(keys)
+    if time:
+        tv0 = d.cols[time].astype(float)
+        pv0 = d.cols[panel].astype(float) if panel else np.zeros(d.n)
+        ok0 = ~np.isnan(tv0) & ~np.isnan(pv0)
+        pairs = np.column_stack([pv0[ok0], tv0[ok0]])
+        if len(np.unique(pairs, axis=0)) < len(pairs):
+            d.ts = None
+            raise StataError('repeated time values within panel' if panel else 'repeated time values in sample', 451)
+    tfmt = d.formats.get(time, '') if time else ''
+    from .dates import is_tfmt, fmt_t
+    unit_name = {'d': 'day', 'w': 'week', 'm': 'month', 'q': 'quarter', 'h': 'halfyear', 'y': 'year'}
+    tkind = tfmt.strip().lstrip('%-')[1] if is_tfmt(tfmt) else None
+    show = (lambda v: fmt_t(v, tfmt).strip()) if tkind else (lambda v: g_fmt(v).strip())
     if panel:
         pv = d.cols[panel]
         groups = np.unique(pv[~np.isnan(pv)])
@@ -1479,16 +1505,21 @@ def cmd_xtset(ip, cmd, rest, by):
         ip.txt(f'\nPanel variable: ')
         ip.res(f'{panel} ({bal})\n')
     if time:
-        tv = d.cols[time]
-        ok = tv[~np.isnan(tv)]
+        tv = d.cols[time].astype(float)
+        ok = ~np.isnan(tv)
+        delta = d.ts['delta']
+        pv = d.cols[panel].astype(float) if panel else np.zeros(d.n)
+        ngap = 0
+        for g in np.unique(pv[ok & ~np.isnan(pv)]):
+            tt = np.sort(tv[ok & (pv == g)])
+            ngap += int(np.sum(np.round(np.diff(tt) / delta) > 1))
         ip.txt(f' Time variable: ' if panel else 'Time variable: ')
-        ip.res(f'{time}, {g_fmt(ok.min())} to {g_fmt(ok.max())}')
-        gaps = False
-        if panel:
-            gaps = False
-        ip.res(('\n' if not gaps else ', but with gaps\n'))
+        ip.res(f'{time}, {show(tv[ok].min())} to {show(tv[ok].max())}')
+        ip.res('\n' if not ngap else (', but with a gap\n' if ngap == 1 else ', but with gaps\n'))
         ip.txt(f'         Delta: ' if panel else '        Delta: ')
-        ip.res('1 unit\n')
+        un = unit_name.get(tkind, 'unit')
+        dl = g_fmt(delta).strip()
+        ip.res(f'{dl} {un}{"s" if delta != 1 else ""}\n')
     ip.set_r(macros={'panelvar': panel or '', 'timevar': time or ''})
 
 

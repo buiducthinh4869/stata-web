@@ -933,6 +933,9 @@ class Interp:
                     self.rc = 0
                 except StataError as e:
                     self.rc = e.rc
+                    if re.match(r'^(noisily|noisil|noisi|nois|noi)\b', rest):
+                        self.err(e.msg + '\n')
+                        self.out.write(f'r({e.rc});\n', 'err')
                 except Exception:  # noqa: BLE001
                     self.rc = 198
                 finally:
@@ -1093,6 +1096,11 @@ def canon_coef(name):
             out.append(f'{num_to_macro(lv)}.{m.group(2)}')
             continue
         p = re.sub(r'^(?:o\.|co\.|c\.)', '', p)
+        tm = re.match(r'^((?:[LDFSldfs]\d*)+)\.(.+)$', p)
+        if tm:
+            from .tsops import opname, _parse_chain
+            ch = opname(_parse_chain(tm.group(1)))
+            p = f'{ch}.{tm.group(2)}' if ch else tm.group(2)
         out.append(p)
     return '#'.join(out)
 

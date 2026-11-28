@@ -255,7 +255,7 @@ class Comp:
         self.tsop = tsop
 
     def key(self):
-        return (self.kind, self.var)
+        return (self.kind, self.var, self.tsop)
 
 
 def parse_comp(tok, in_interaction):
@@ -273,16 +273,27 @@ def parse_comp(tok, in_interaction):
         elif pre.startswith('ib'):
             base = float(pre[2:])
         return Comp('i', var, base)
-    tm = re.match(r'^([LDF])(\d*)\.(.+)$', tok)
+    tm = re.match(r'^((?:[LDFSldfs]\d*)+)\.(.+)$', tok)
     if tm:
-        return Comp('c', tm.group(3), tsop=(tm.group(1), int(tm.group(2) or 1)))
+        from .tsops import opname, _parse_chain
+        ch = opname(_parse_chain(tm.group(1)))
+        if not ch:
+            return Comp('i' if in_interaction else 'c', tm.group(2))
+        return Comp('c', tm.group(2), tsop=ch)
     return Comp('i' if in_interaction else 'c', tok)
 
 
 def parse_terms(tokens):
     """Expand varlist tokens with factor notation into a list of terms (lists of Comp)."""
+    from .tsops import expand_token
     terms = []
+    exp_tokens = []
     for tok in tokens:
+        if '#' not in tok:
+            exp_tokens.extend(expand_token(tok))
+        else:
+            exp_tokens.append(tok)
+    for tok in exp_tokens:
         if '##' in tok:
             parts = tok.split('##')
             comps = [parse_comp(p, True) for p in parts]

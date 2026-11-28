@@ -109,7 +109,7 @@ class TsOp(Node):
 _PREC = {'|': 1, '&': 2, '==': 3, '!=': 3, '~=': 3, '>': 3, '<': 3, '>=': 3, '<=': 3,
          '+': 4, '-': 4, '*': 5, '/': 5, '^': 7}
 
-_RAWARG = {'e', 'r', 'c', 's'}
+_RAWARG = {'e', 'r', 'c', 's', 'tq', 'tm', 'td', 'th', 'tw', 'ty'}
 
 
 class Parser:
@@ -251,7 +251,7 @@ class Parser:
         raise StataError(f'invalid syntax near "{t.val}"', 198)
 
 
-_TS_RE = re.compile(r'\b([LDFS])(\d*)\.([A-Za-z_][A-Za-z0-9_]*)')
+_TS_RE = re.compile(r'(?<![\w.])((?:[LDFS]\d*)+)\.([A-Za-z_][A-Za-z0-9_]*)')
 
 
 _COEF_RE = re.compile(r'_(b|se|coef)\[([^\]]*)\]')
@@ -289,7 +289,7 @@ def _coef_sub(s):
 
 def parse(s):
     s = _coef_sub(s)
-    s = _TS_RE.sub(lambda m: f'__ts_{m.group(1)}{m.group(2) or "1"}__{m.group(3)}', s)
+    s = _TS_RE.sub(lambda m: f'__ts_{m.group(1)}__{m.group(2)}', s)
     return Parser(s).parse_full()
 
 
@@ -403,8 +403,9 @@ def _eval_name(n, ctx):
         k, raw = _COEF_STORE[n]
         return ip.get_coef(k, raw)
     if n.startswith('__ts_'):
-        m = re.match(r'__ts_([LDFS])(\d+)__(.+)', n)
-        return ip.ts_op(ctx, m.group(1), int(m.group(2)), m.group(3))
+        m = re.match(r'__ts_((?:[LDFS]\d*)+)__(.+)', n)
+        from .tsops import apply as _ts_apply
+        return _ts_apply(ip, ctx.data if ctx.data is not None else ip.data, m.group(1), m.group(2))
     d = ctx.data
     if n == '_n':
         if d is None:
@@ -647,6 +648,12 @@ def _eval_call(node, ctx):
     f = node.f
     ip = ctx.ip
     if node.raw is not None:
+        if f in ('tq', 'tm', 'td', 'th', 'tw', 'ty'):
+            from .dates import literal
+            v = literal(f, node.raw)
+            if v is None:
+                raise StataError(f'{node.raw} invalid date literal', 198)
+            return float(v)
         return ip.get_return(f, node.raw)
     if f in ('rowsof', 'colsof', 'el') and node.args and isinstance(node.args[0], Name):
         M = ip.get_matrix(node.args[0].n)
@@ -838,6 +845,8 @@ def _mod(x, y):
     return x - y * np.floor(x / y)
 
 
+from .dates import make_funcs as _date_funcs  # noqa: E402
+
 FUNCS = {
     'abs': lambda c, a: _apply1(np.abs, a[0]),
     'ln': lambda c, a: _apply1(lambda v: np.where(v > 0, np.log(np.where(v > 0, v, 1)), np.nan), a[0]),
@@ -912,3 +921,5 @@ FUNCS = {
 
 def eval_expr(s, ctx):
     return evaluate(parse(s), ctx)
+
+FUNCS.update(_date_funcs())

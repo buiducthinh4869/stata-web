@@ -72,9 +72,26 @@ class Fit:
     pass
 
 
+def depvar_values(ip, d, tok):
+    """Dependent variable, allowing time-series operators (D.y, L.y)."""
+    from .tsops import has_tsop, expand_token, split_name, apply as _ts_apply
+    if has_tsop(tok):
+        ex = expand_token(tok)
+        if len(ex) != 1:
+            raise StataError('depvar may not be a varlist', 103)
+        ch, v = split_name(ex[0])
+        v = d.resolve(v)
+        if not ch:
+            return v, d.cols[v].astype(float)
+        return f'{ch}.{v}', _ts_apply(ip, d, ch, v)
+    v = d.resolve(tok)
+    if d.isstr(v):
+        raise StataError(f'{v}: string variable not allowed', 109)
+    return v, d.cols[v].astype(float)
+
+
 def prepare_linear(ip, p, d, rhs_tokens, depvar_tok, extra_mask=None, nocons=False, override=None):
-    y_var = d.resolve(depvar_tok)
-    y = d.cols[y_var].astype(float)
+    y_var, y = depvar_values(ip, d, depvar_tok)
     mask = ip.mark(p, d)
     if extra_mask is not None:
         mask &= extra_mask
@@ -377,7 +394,8 @@ def _predict_linear(ip, est, kind, override=None):
         for c in t:
             v = d.resolve(c.var)
             if c.tsop:
-                vals = ip.ts_op(E.Ctx(ip, d), c.tsop[0], c.tsop[1], v)
+                from .tsops import apply as _ts_apply
+                vals = _ts_apply(ip, d, c.tsop, v)
             else:
                 vals = d.cols[v] if (override is None or v not in override) else override[v]
             miss |= np.isnan(np.asarray(vals, dtype=float))
@@ -387,7 +405,7 @@ def _predict_linear(ip, est, kind, override=None):
     if kind in ('xb', None, ''):
         return xb
     if kind in ('residuals', 'resid', 'res', 'r'):
-        y = d.cols[est['depvar']]
+        y = depvar_values(ip, d, est['depvar'])[1]
         return y - xb
     raise StataError(f'predict option {kind} not supported', 198)
 
@@ -671,9 +689,9 @@ def _xt_predict(ip, est, kind, u, gid, mask):
     if kind == 'u':
         return full_u
     if kind == 'ue':
-        return d.cols[est['depvar']] - xb
+        return depvar_values(ip, d, est['depvar'])[1] - xb
     if kind == 'e':
-        return d.cols[est['depvar']] - xb - full_u
+        return depvar_values(ip, d, est['depvar'])[1] - xb - full_u
     if kind == 'xbu':
         return xb + full_u
     return _predict_linear(ip, est, kind)
