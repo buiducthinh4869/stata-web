@@ -376,6 +376,7 @@ def _ctable(ip, fobj, specs, noci, stderror, level, stepmax, title):
     lev = float(level) if level not in (None, '') else 95.0
     z = sps.norm.ppf(1 - (100 - lev) / 200)
     triples, cols = [], []     # cols: (k_u, header, values, blocklen)
+    anyci = False
     for nm, i, r, stats in specs:
         R = fobj['res'][nm]
         key = (nm, i, r)
@@ -391,6 +392,7 @@ def _ctable(ip, fobj, specs, noci, stderror, level, stepmax, title):
                 pass
             blk = [(s, _value(R, s, r, i, ''))]
             if not noci_:
+                anyci = True
                 blk += [('Lower', _value(R, s, r, i, ('lo', z))), ('Upper', _value(R, s, r, i, ('hi', z)))]
             if stderror:
                 blk.append(('S.E.', _value(R, s, r, i, 'se')))
@@ -464,7 +466,7 @@ def _ctable(ip, fobj, specs, noci, stderror, level, stepmax, title):
                 (ip.res if sty == 'res' else ip.txt)(t)
             ip.txt('\n')
         ip.txt(bot + '\n')
-    if not noci:
+    if anyci:
         ip.txt(f'{fmt_num(lev, "%9.0g").strip()}% lower and upper bounds reported\n')
     for k, (nm, i, r) in enumerate(triples, start=1):
         ip.txt(f'({k}) irfname = {nm}, impulse = {i}, and response = {r}\n')
