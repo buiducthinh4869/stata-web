@@ -405,3 +405,37 @@ def fmt_t(x, fmt):
             s = '.'
     w = max(len(s), 9 if kind == 'd' and not rest else len(s))
     return s.ljust(w) if left else s.rjust(w)
+
+
+def tin_mask(ip, d, raw, within=False):
+    """tin(d1, d2) / twithin(d1, d2): time variable in [d1, d2] (or open interval for twithin);
+    d1/d2 are written in the time variable's display units (e.g. 1978q1); either may be blank."""
+    from .errors import StataError
+    if not d.ts or not d.ts.get('time'):
+        raise StataError('time variable not set, use tsset varname ...', 111)
+    tv = d.ts['time']
+    t = d.cols[tv].astype(float)
+    parts = raw.split(',')
+    if len(parts) != 2:
+        raise StataError('tin() requires two arguments', 198)
+    fmt = d.formats.get(tv, '%9.0g').strip().lstrip('%').lstrip('-')
+    kind = fmt[:2] if fmt[:1] == 't' else None
+
+    def conv(s):
+        s = s.strip()
+        if not s:
+            return None
+        if kind in ('tq', 'tm', 'th', 'tw', 'td'):
+            v = literal(kind, s)
+            if v is None:
+                raise StataError(f'{s} invalid date', 198)
+            return float(v)
+        return float(s)
+    a, b = conv(parts[0]), conv(parts[1])
+    lo = -np.inf if a is None else a
+    hi = np.inf if b is None else b
+    if within:
+        m = (t > lo) & (t < hi)
+    else:
+        m = (t >= lo) & (t <= hi)
+    return np.where(np.isnan(t), 0.0, m.astype(float))

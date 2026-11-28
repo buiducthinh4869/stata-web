@@ -109,7 +109,7 @@ class TsOp(Node):
 _PREC = {'|': 1, '&': 2, '==': 3, '!=': 3, '~=': 3, '>': 3, '<': 3, '>=': 3, '<=': 3,
          '+': 4, '-': 4, '*': 5, '/': 5, '^': 7}
 
-_RAWARG = {'e', 'r', 'c', 's', 'tq', 'tm', 'td', 'th', 'tw', 'ty'}
+_RAWARG = {'e', 'r', 'c', 's', 'tq', 'tm', 'td', 'th', 'tw', 'ty', 'tin', 'twithin'}
 
 
 class Parser:
@@ -648,6 +648,9 @@ def _eval_call(node, ctx):
     f = node.f
     ip = ctx.ip
     if node.raw is not None:
+        if f in ('tin', 'twithin'):
+            from .dates import tin_mask
+            return tin_mask(ip, ctx.data if ctx.data is not None else ip.data, node.raw, f == 'twithin')
         if f in ('tq', 'tm', 'td', 'th', 'tw', 'ty'):
             from .dates import literal
             v = literal(f, node.raw)
