@@ -714,6 +714,16 @@ def _inlist(ctx, a):
     return 1.0 if any(x == v for v in a[1:]) else 0.0
 
 
+def _irecode(ctx, a):
+    x = a[0]
+    cuts = [float(v) for v in a[1:]]
+    xa = np.asarray(x, float) if is_arr(x) else np.array([float(x)])
+    out = np.full(xa.shape, np.nan)
+    ok = ~np.isnan(xa)
+    out[ok] = np.searchsorted(np.array(cuts), xa[ok], side='left')
+    return out if is_arr(x) else float(out[0])
+
+
 def _inrange(ctx, a):
     x, lo, hi = a
     x2 = _cmp_prep(x)
@@ -871,6 +881,7 @@ FUNCS = {
     'max': lambda c, a: _minmax(a, np.nanmax),
     'cond': _cond,
     'inlist': _inlist,
+    'irecode': _irecode,
     'inrange': _inrange,
     'sum': _sum_running,
     'normal': lambda c, a: _apply1(sps.norm.cdf, a[0]),

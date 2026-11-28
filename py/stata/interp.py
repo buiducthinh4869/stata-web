@@ -471,6 +471,11 @@ class Interp:
     def get_matrix(self, name):
         if name in self.matrices:
             return self.matrices[name]
+        m = re.match(r'^([er])\((\w+)\)$', name)
+        if m:
+            R = self.e if m.group(1) == 'e' else self.r
+            if m.group(2) in R.matrices:
+                return R.matrices[m.group(2)]
         raise StataError(f'matrix {name} not found', 111)
 
     # ---------------- random numbers
@@ -1106,4 +1111,4 @@ def canon_coef(name):
 
 
 def load_commands():
-    from . import cmds_core, cmds_data, cmds_stats, estim, causal, causal2, tables, graphs, cmds_more, cmds_ext, models, tsuni, tsreg, tsarima, tsarch, tsvar, tsirf, tssvar, tsvec, tsardl, xtdiag, xtgls, xtab2, xtdpdoff, xtunit, xtnl, xtiv, xtht  # noqa: F401
+    from . import cmds_core, cmds_data, cmds_stats, estim, causal, causal2, tables, graphs, cmds_more, cmds_ext, models, tsuni, tsreg, tsarima, tsarch, tsvar, tsirf, tssvar, tsvec, tsardl, xtdiag, xtgls, xtab2, xtdpdoff, xtunit, xtnl, xtiv, xtht, xtmg, xthreg, xtqr, qrpd  # noqa: F401
