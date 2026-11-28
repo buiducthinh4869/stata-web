@@ -909,6 +909,8 @@ HELP = {
     'Đồ thị': 'histogram, kdensity, scatter, twoway (scatter/line/connected/lfit/qfit/lfitci/rcap/rarea/bar/function), graph box/bar/matrix/combine/export, coefplot, marginsplot, rvfplot, pnorm, qnorm',
     'Hồi quy': 'regress, predict, xtreg fe/re/be, reghdfe, areg, logit, probit, test, testparm, lincom, margins, hausman, estat hettest/ovtest/vif/ic',
     'Biến rời rạc': 'poisson [, irr exposure() offset()], nbreg, ppmlhdfe (gravity, absorb()), tobit [, ll() ul()], ologit, oprobit, mlogit [, baseoutcome() rrr]',
+    'Chuỗi thời gian': 'dfuller, pperron, kpss, zandrews, corrgram, ac, pac, wntestq, tsfilter, arima, arch/garch/egarch/tarch, var, varsoc, vargranger, varstable, varlmar, varnorm, svar, irf create/table/graph, vecrank, vec, vecstable, ardl (+ estat ectest/btest), tsappend',
+    'Dữ liệu bảng nâng cao': 'xtabond2 (diff/system GMM, Hansen, Sargan, AR(1)/AR(2)), xtabond, xtdpdsys, estat abond/sargan, xtunitroot llc/ips/ht/breitung/fisher/hadri, xtgls, xtpcse, xtscc, xttest0, xttest3, xtserial, xtcsd',
     'IV': 'ivregress 2sls, ivreg2, estat firststage/endogenous/overid, weakivtest',
     'RDD': 'rdrobust, rdbwselect, rdplot, rddensity',
     'PSM': 'psmatch2, pstest, psgraph, teffects psmatch, kmatch',
