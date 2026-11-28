@@ -325,7 +325,7 @@ def _pad_omitted(Xpre, f0, act):
 
 
 # ================================================================ estat after regress
-def _after_regress(ip, allow=('regress',)):
+def _after_regress(ip, allow=('regress', 'ardl')):
     est = ip.est
     if est is None or est.get('cmd') not in allow:
         raise StataError('This command only works after regress.', 301)

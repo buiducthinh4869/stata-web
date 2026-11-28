@@ -823,7 +823,10 @@ def _xtreg_re(ip, d, y, yv, cols, mask, vce, clv, ivar):
                    extra_rows=[('sigma_u', sigma_u, ''), ('sigma_e', sigma_e, ''),
                                ('rho', rho, '(fraction of variance due to u_i)')])
     est['replay'] = replay
-    est['predict'] = lambda ip_, kind, m_: _predict_linear(ip_, est, kind)
+    est['Xpool'] = Xall[:, active]
+    resb = _gmeans(yy - xb, gid)
+    u_re = resb * (Ti * sig_u2) / (Ti * sig_u2 + sig_e2) if sig_u2 > 0 else np.zeros(G)
+    est['predict'] = lambda ip_, kind, m_: _xt_predict(ip_, est, kind, u_re, gid, mask)
     return est
 
 
