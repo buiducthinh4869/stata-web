@@ -111,8 +111,8 @@ def fmt_num(x, fmt):
                     except ValueError:
                         pass
             else:
-                s = f'{x:.{dd}g}'
-                s = _strip0(s)
+                # %w.dg: at most d significant digits, then shown as %w.0g
+                s = g_fmt(float(f'{x:.{dd}g}'), w if w else 9)
         elif typ == 'e':
             dd = int(d) if d is not None else 2
             s = f'{x:.{dd}e}'
